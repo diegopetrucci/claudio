@@ -12,6 +12,7 @@ let package = Package(
         .package(path: "AnthropicClient"),
         .package(path: "TelegramClient"),
         .package(path: "TelegramBotService"),
+        .package(path: "TelegramPollingLifecycleHandler"),
     ],
     targets: [
         .executableTarget(
@@ -23,6 +24,7 @@ let package = Package(
                 "AnthropicClient",
                 "TelegramClient",
                 "TelegramBotService",
+                "TelegramPollingLifecycleHandler",
             ],
             swiftSettings: swiftSettings
         ),
@@ -34,6 +36,7 @@ let package = Package(
                 "AnthropicClient",
                 "TelegramClient",
                 "TelegramBotService",
+                "TelegramPollingLifecycleHandler",
             ],
             swiftSettings: swiftSettings
         )

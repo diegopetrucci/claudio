@@ -3,33 +3,32 @@
 import PackageDescription
 
 let package = Package(
-    name: "TelegramClient",
+    name: "TelegramPollingLifecycleHandler",
     platforms: [
         .macOS(.v13),
     ],
     products: [
         .library(
-            name: "TelegramClient",
-            targets: ["TelegramClient"]
+            name: "TelegramPollingLifecycleHandler",
+            targets: ["TelegramPollingLifecycleHandler"]
         ),
     ],
     dependencies: [
         .package(url: "https://github.com/vapor/vapor.git", from: "4.115.0"),
-        .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
+        .package(path: "../TelegramClient"),
     ],
     targets: [
         .target(
-            name: "TelegramClient",
+            name: "TelegramPollingLifecycleHandler",
             dependencies: [
                 .product(name: "Vapor", package: "vapor"),
+                "TelegramClient",
             ]
         ),
         .testTarget(
-            name: "TelegramClientTests",
+            name: "TelegramPollingLifecycleHandlerTests",
             dependencies: [
-                .target(name: "TelegramClient"),
-                .product(name: "NIOCore", package: "swift-nio"),
-                .product(name: "NIOPosix", package: "swift-nio"),
+                .target(name: "TelegramPollingLifecycleHandler"),
             ]
         ),
     ]

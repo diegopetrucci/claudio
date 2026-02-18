@@ -1,26 +1,37 @@
 import Vapor
 import TelegramClient
 
-struct TelegramPollingLifecycleHandler: LifecycleHandler {
+public final class TelegramPollingLifecycleHandler: LifecycleHandler, @unchecked Sendable {
+    let getUpdates: @Sendable (Int?, Int) async throws -> [TelegramUpdate]
+    let handleIncomingText: @Sendable (Int64, String) async throws -> Void
+    let logger: Logger
     let pollTimeoutSeconds: Int
     let retryDelayNanoseconds: UInt64
+    private let taskState: PollingTaskState
 
-    init(
+    public init(
+        getUpdates: @escaping @Sendable (Int?, Int) async throws -> [TelegramUpdate],
+        handleIncomingText: @escaping @Sendable (Int64, String) async throws -> Void,
+        logger: Logger,
         pollTimeoutSeconds: Int = 30,
         retryDelayNanoseconds: UInt64 = 2_000_000_000
     ) {
+        self.getUpdates = getUpdates
+        self.handleIncomingText = handleIncomingText
+        self.logger = logger
         self.pollTimeoutSeconds = pollTimeoutSeconds
         self.retryDelayNanoseconds = retryDelayNanoseconds
+        self.taskState = PollingTaskState()
     }
 
-    func didBootAsync(_ application: Application) async throws {
-        let getUpdates = application.telegramClient.getUpdates
-        let handleIncomingText = application.telegramBotService.handleIncomingText
-        let logger = application.logger
+    public func didBootAsync(_ application: Application) async throws {
+        let getUpdates = self.getUpdates
+        let handleIncomingText = self.handleIncomingText
+        let logger = self.logger
         let pollTimeoutSeconds = self.pollTimeoutSeconds
         let retryDelayNanoseconds = self.retryDelayNanoseconds
 
-        application.telegramPollingTask = Task {
+        let newTask = Task {
             var offset: Int?
 
             while !Task.isCancelled {
@@ -31,7 +42,7 @@ struct TelegramPollingLifecycleHandler: LifecycleHandler {
                     }
 
                     for update in updates {
-                        try await handleUpdate(
+                        await handleUpdate(
                             update,
                             logger,
                             handleIncomingText,
@@ -57,16 +68,35 @@ struct TelegramPollingLifecycleHandler: LifecycleHandler {
                 }
             }
         }
+
+        let previousTask = await self.taskState.replace(with: newTask)
+        previousTask?.cancel()
     }
 
-    func shutdownAsync(_ application: Application) async {
-        guard let task = application.telegramPollingTask else {
+    public func shutdownAsync(_ application: Application) async {
+        let task = await self.taskState.take()
+        guard let task else {
             return
         }
 
         task.cancel()
         _ = await task.result
-        application.telegramPollingTask = nil
+    }
+}
+
+private actor PollingTaskState {
+    private var task: Task<Void, Never>?
+
+    func replace(with newTask: Task<Void, Never>) -> Task<Void, Never>? {
+        let previous = self.task
+        self.task = newTask
+        return previous
+    }
+
+    func take() -> Task<Void, Never>? {
+        let current = self.task
+        self.task = nil
+        return current
     }
 }
 
@@ -74,12 +104,12 @@ private func handleUpdate(
     _ update: TelegramUpdate,
     _ logger: Logger,
     _ handleIncomingText: @Sendable (Int64, String) async throws -> Void,
-) async throws {
+) async {
     guard let message = update.message else { return }
     if message.from?.isBot == true { return }
-    
+
     guard let text = message.text, !text.isEmpty else { return }
-    
+
     do {
         try await handleIncomingText(message.chat.id, text)
     } catch {

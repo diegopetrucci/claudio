@@ -2,6 +2,7 @@ import Vapor
 import AnthropicClient
 import TelegramClient
 import TelegramBotService
+import TelegramPollingLifecycleHandler
 
 // configures your application
 public func configure(_ app: Application) async throws {
@@ -30,7 +31,14 @@ private func configureTelegram(
     
     app.telegramClient = .live(client: app.client, botToken: botToken)
 
-    app.lifecycle.use(TelegramPollingLifecycleHandler(pollTimeoutSeconds: 30))
+    app.lifecycle.use(
+        TelegramPollingLifecycleHandler(
+            getUpdates: app.telegramClient.getUpdates,
+            handleIncomingText: app.telegramBotService.handleIncomingText,
+            logger: app.logger,
+            pollTimeoutSeconds: 30
+        )
+    )
 }
 
 private func configureAnthropic(

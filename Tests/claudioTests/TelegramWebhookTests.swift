@@ -4,11 +4,14 @@ import VaporTesting
 
 @Suite("TelegramWebhook Tests")
 struct TelegramWebhookTests {
-    @Test("webhook echoes user text")
-    func webhookEchoesText() async throws {
+    @Test("webhook responds with Anthropic output")
+    func webhookUsesAnthropicOutput() async throws {
         let recorder = TelegramSendRecorder()
 
         try await withApp(configure: { app in
+            app.anthropicClient = .init(generateText: { prompt in
+                "AI: \(prompt)"
+            })
             app.telegramClient = .init(sendMessage: { chatID, text in
                 await recorder.record(chatID: chatID, text: text)
                 return TelegramSentMessage(messageID: 1)
@@ -26,7 +29,7 @@ struct TelegramWebhookTests {
 
         let calls = await recorder.allCalls()
         #expect(calls.count == 1)
-        #expect(calls[0] == TelegramSendCall(chatID: 101, text: "Echo: hello"))
+        #expect(calls[0] == TelegramSendCall(chatID: 101, text: "AI: hello"))
     }
 
     @Test("webhook ignores bot messages")
@@ -34,6 +37,9 @@ struct TelegramWebhookTests {
         let recorder = TelegramSendRecorder()
 
         try await withApp(configure: { app in
+            app.anthropicClient = .init(generateText: { prompt in
+                "AI: \(prompt)"
+            })
             app.telegramClient = .init(sendMessage: { chatID, text in
                 await recorder.record(chatID: chatID, text: text)
                 return TelegramSentMessage(messageID: 1)
@@ -59,6 +65,9 @@ struct TelegramWebhookTests {
 
         try await withApp(configure: { app in
             app.telegramWebhookSecretToken = "expected-secret"
+            app.anthropicClient = .init(generateText: { prompt in
+                "AI: \(prompt)"
+            })
             app.telegramClient = .init(sendMessage: { chatID, text in
                 await recorder.record(chatID: chatID, text: text)
                 return TelegramSentMessage(messageID: 1)
@@ -85,6 +94,9 @@ struct TelegramWebhookTests {
 
         try await withApp(configure: { app in
             app.telegramWebhookSecretToken = "expected-secret"
+            app.anthropicClient = .init(generateText: { prompt in
+                "AI: \(prompt)"
+            })
             app.telegramClient = .init(sendMessage: { chatID, text in
                 await recorder.record(chatID: chatID, text: text)
                 return TelegramSentMessage(messageID: 1)
@@ -134,4 +146,3 @@ private struct TelegramSendCall: Equatable, Sendable {
     let chatID: Int64
     let text: String
 }
-

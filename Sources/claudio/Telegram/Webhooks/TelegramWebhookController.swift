@@ -25,10 +25,14 @@ struct TelegramWebhookController: RouteCollection {
         }
 
         do {
-            _ = try await req.application.telegramClient.sendMessage(message.chat.id, "Echo: \(text)")
+            let generatedReply = try await req.application.anthropicClient.generateText(text)
+            _ = try await req.application.telegramClient.sendMessage(
+                message.chat.id,
+                generatedReply
+            )
         } catch {
             req.logger.error(
-                "Failed to send Telegram message",
+                "Failed to process Telegram message",
                 metadata: [
                     "update_id": .stringConvertible(update.updateID),
                     "chat_id": .stringConvertible(message.chat.id),
@@ -49,4 +53,3 @@ struct TelegramWebhookController: RouteCollection {
         }
     }
 }
-

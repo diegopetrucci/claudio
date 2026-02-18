@@ -3,6 +3,7 @@ import Vapor
 
 struct TelegramClient: Sendable {
     var sendMessage: @Sendable (Int64, String) async throws -> TelegramSentMessage
+    var getUpdates: @Sendable (Int?, Int) async throws -> [TelegramUpdate]
 }
 
 extension TelegramClient {
@@ -31,6 +32,29 @@ extension TelegramClient {
                 
                 return message
             },
+            getUpdates: { offset, timeoutSeconds in
+                let endpoint = URI(string: "https://api.telegram.org/bot\(botToken)/getUpdates")
+                let response = try await client.post(endpoint) { request in
+                    try request.content.encode(
+                        TelegramGetUpdatesPayload(
+                            offset: offset,
+                            timeout: timeoutSeconds,
+                            allowedUpdates: ["message"]
+                        ),
+                        as: .json
+                    )
+                }
+
+                let apiResponse = try response.content.decode(TelegramAPIResponse<[TelegramUpdate]>.self)
+                guard apiResponse.ok else {
+                    throw TelegramClientError.api(
+                        description: apiResponse.description ?? "Telegram API request failed.",
+                        code: apiResponse.errorCode
+                    )
+                }
+
+                return apiResponse.result ?? []
+            }
         )
     }
 }

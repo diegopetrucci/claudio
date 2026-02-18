@@ -83,6 +83,61 @@ struct TelegramClientTests {
         }
     }
 
+    @Test("live getUpdates encodes request and decodes updates")
+    func liveGetUpdatesSuccess() async throws {
+        try await Self.withEventLoop { eventLoop in
+            let recorder = RequestRecorder()
+            let httpClient = StubClient(eventLoop: eventLoop) { request in
+                recorder.append(request)
+                return eventLoop.makeSucceededFuture(
+                    Self.makeJSONResponse(#"{"ok":true,"result":[{"update_id":123}]}"#)
+                )
+            }
+
+            let telegramClient = TelegramClient.live(client: httpClient, botToken: "bot-token")
+            let updates = try await telegramClient.getUpdates(120, 30)
+
+            #expect(updates.count == 1)
+            #expect(updates[0].updateID == 123)
+
+            let request = try #require(recorder.firstRequest)
+            #expect(request.method == .POST)
+            #expect(request.url.string == "https://api.telegram.org/botbot-token/getUpdates")
+
+            let captured = request
+            let payload = try captured.content.decode(TelegramGetUpdatesPayload.self)
+            #expect(payload.offset == 120)
+            #expect(payload.timeout == 30)
+            #expect(payload.allowedUpdates == ["message"])
+        }
+    }
+
+    @Test("live getUpdates maps Telegram API error payload")
+    func liveGetUpdatesAPIError() async throws {
+        try await Self.withEventLoop { eventLoop in
+            let httpClient = StubClient(eventLoop: eventLoop) { _ in
+                eventLoop.makeSucceededFuture(
+                    Self.makeJSONResponse(#"{"ok":false,"description":"Unauthorized","error_code":401}"#)
+                )
+            }
+
+            let telegramClient = TelegramClient.live(client: httpClient, botToken: "bot-token")
+
+            do {
+                _ = try await telegramClient.getUpdates(nil, 30)
+                Issue.record("Expected TelegramClientError.api, but call succeeded.")
+            } catch let error as TelegramClientError {
+                switch error {
+                case let .api(description, code):
+                    #expect(description == "Unauthorized")
+                    #expect(code == 401)
+                default:
+                    Issue.record("Expected .api error, got \(error).")
+                }
+            }
+        }
+    }
+
     private static func makeJSONResponse(_ json: String) -> ClientResponse {
         var headers = HTTPHeaders()
         headers.contentType = .json

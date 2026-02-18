@@ -4,13 +4,14 @@ import Testing
 
 @Suite("App Tests")
 struct claudioTests {
-    @Test("Test Hello World Route")
-    func helloWorld() async throws {
-        try await withApp(configure: configure) { app in
+    @Test("Unknown route returns 404")
+    func unknownRouteReturnsNotFound() async throws {
+        try await withApp(configure: { app in
+            try routes(app)
+        }, { app in
             try await app.testing().test(.GET, "hello", afterResponse: { res async in
-                #expect(res.status == .ok)
-                #expect(res.body.string == "Hello, world!")
+                #expect(res.status == .notFound)
             })
-        }
+        })
     }
 }

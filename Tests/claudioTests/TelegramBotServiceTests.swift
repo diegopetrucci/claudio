@@ -18,6 +18,9 @@ struct TelegramBotServiceTests {
             sendMessage: { chatID, text in
                 await sendRecorder.record(chatID: chatID, text: text)
                 return TelegramSentMessage(messageID: 1)
+            },
+            getUpdates: { _, _ in
+                []
             }
         )
         let service = TelegramBotService.live(
@@ -46,6 +49,9 @@ struct TelegramBotServiceTests {
             sendMessage: { chatID, text in
                 await sendRecorder.record(chatID: chatID, text: text)
                 return TelegramSentMessage(messageID: 1)
+            },
+            getUpdates: { _, _ in
+                []
             }
         )
         let service = TelegramBotService.live(

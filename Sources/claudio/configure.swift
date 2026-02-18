@@ -26,10 +26,8 @@ private func configureTelegram(
     }
     
     app.telegramClient = .live(client: app.client, botToken: botToken)
-    
-    if let secretToken = Environment.get("TELEGRAM_WEBHOOK_SECRET_TOKEN"), !secretToken.isEmpty {
-        app.telegramWebhookSecretToken = secretToken
-    }
+
+    app.lifecycle.use(TelegramPollingLifecycleHandler(pollTimeoutSeconds: 30))
 }
 
 private func configureAnthropic(

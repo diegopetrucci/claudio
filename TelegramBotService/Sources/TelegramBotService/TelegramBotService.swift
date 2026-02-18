@@ -1,12 +1,18 @@
 import AnthropicClient
 import TelegramClient
 
-struct TelegramBotService: Sendable {
-    var handleIncomingText: @Sendable (Int64, String) async throws -> Void
+public struct TelegramBotService: Sendable {
+    public var handleIncomingText: @Sendable (Int64, String) async throws -> Void
+
+    public init(
+        handleIncomingText: @escaping @Sendable (Int64, String) async throws -> Void
+    ) {
+        self.handleIncomingText = handleIncomingText
+    }
 }
 
 extension TelegramBotService {
-    static func live(
+    public static func live(
         anthropicClient: AnthropicClient,
         telegramClient: TelegramClient
     ) -> Self {

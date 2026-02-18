@@ -1,6 +1,7 @@
 import Vapor
 import AnthropicClient
 import TelegramClient
+import TelegramBotService
 
 // configures your application
 public func configure(_ app: Application) async throws {

@@ -1,4 +1,5 @@
 import Vapor
+import TelegramBotService
 
 extension Application {
     private struct TelegramBotServiceKey: StorageKey {
@@ -17,4 +18,3 @@ extension Application {
         }
     }
 }
-

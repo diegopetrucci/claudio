@@ -11,6 +11,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
         .package(path: "AnthropicClient"),
         .package(path: "TelegramClient"),
+        .package(path: "TelegramBotService"),
     ],
     targets: [
         .executableTarget(
@@ -21,6 +22,7 @@ let package = Package(
                 .product(name: "NIOPosix", package: "swift-nio"),
                 "AnthropicClient",
                 "TelegramClient",
+                "TelegramBotService",
             ],
             swiftSettings: swiftSettings
         ),
@@ -31,6 +33,7 @@ let package = Package(
                 .product(name: "VaporTesting", package: "vapor"),
                 "AnthropicClient",
                 "TelegramClient",
+                "TelegramBotService",
             ],
             swiftSettings: swiftSettings
         )

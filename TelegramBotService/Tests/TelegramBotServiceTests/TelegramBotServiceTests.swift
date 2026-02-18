@@ -1,7 +1,7 @@
-@testable import claudio
 import Testing
 import AnthropicClient
 import TelegramClient
+@testable import TelegramBotService
 
 @Suite("TelegramBotService Tests")
 struct TelegramBotServiceTests {

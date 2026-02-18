@@ -1,4 +1,5 @@
 import AnthropicClient
+import TelegramClient
 
 struct TelegramBotService: Sendable {
     var handleIncomingText: @Sendable (Int64, String) async throws -> Void
@@ -17,4 +18,3 @@ extension TelegramBotService {
         )
     }
 }
-

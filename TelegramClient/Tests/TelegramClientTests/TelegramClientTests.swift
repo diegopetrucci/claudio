@@ -1,4 +1,4 @@
-@testable import claudio
+@testable import TelegramClient
 import Foundation
 import Logging
 import NIOCore
@@ -208,3 +208,4 @@ private final class RequestRecorder: @unchecked Sendable {
         self.requests.append(request)
     }
 }
+

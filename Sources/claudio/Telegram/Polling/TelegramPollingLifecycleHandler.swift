@@ -1,4 +1,5 @@
 import Vapor
+import TelegramClient
 
 struct TelegramPollingLifecycleHandler: LifecycleHandler {
     let pollTimeoutSeconds: Int

@@ -1,4 +1,5 @@
 import Vapor
+import TelegramClient
 
 extension Application {
     private struct TelegramClientKey: StorageKey {
@@ -12,7 +13,6 @@ extension Application {
             }
             return client
         }
-        
         set {
             self.storage[TelegramClientKey.self] = newValue
         }

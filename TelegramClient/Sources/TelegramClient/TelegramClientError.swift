@@ -1,12 +1,12 @@
 import Foundation
 
-enum TelegramClientError: Error, Sendable {
+public enum TelegramClientError: Error, Sendable {
     case api(description: String, code: Int?)
     case missingResult
 }
 
 extension TelegramClientError: LocalizedError {
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case let .api(description, code):
             if let code {
@@ -19,3 +19,4 @@ extension TelegramClientError: LocalizedError {
         }
     }
 }
+

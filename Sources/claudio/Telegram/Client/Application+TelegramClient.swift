@@ -12,6 +12,7 @@ extension Application {
             }
             return client
         }
+        
         set {
             self.storage[TelegramClientKey.self] = newValue
         }

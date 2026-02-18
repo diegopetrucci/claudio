@@ -17,6 +17,14 @@ public func configure(_ app: Application) async throws {
         anthropicClient: app.anthropicClient,
         telegramClient: app.telegramClient
     )
+    app.lifecycle.use(
+        TelegramPollingLifecycleHandler(
+            getUpdates: app.telegramClient.getUpdates,
+            handleIncomingText: app.telegramBotService.handleIncomingText,
+            logger: app.logger,
+            pollTimeoutSeconds: 30
+        )
+    )
     
     // register routes
     try routes(app)
@@ -30,15 +38,6 @@ private func configureTelegram(
     }
     
     app.telegramClient = .live(client: app.client, botToken: botToken)
-
-    app.lifecycle.use(
-        TelegramPollingLifecycleHandler(
-            getUpdates: app.telegramClient.getUpdates,
-            handleIncomingText: app.telegramBotService.handleIncomingText,
-            logger: app.logger,
-            pollTimeoutSeconds: 30
-        )
-    )
 }
 
 private func configureAnthropic(

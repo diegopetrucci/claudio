@@ -1,3 +1,5 @@
+import AnthropicClient
+
 struct TelegramBotService: Sendable {
     var handleIncomingText: @Sendable (Int64, String) async throws -> Void
 }

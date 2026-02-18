@@ -1,4 +1,4 @@
-enum AnthropicModel: String, CaseIterable, Sendable {
+public enum AnthropicModel: String, CaseIterable, Sendable {
     case opus
     case sonnet
     case haiku
@@ -16,7 +16,7 @@ enum AnthropicModel: String, CaseIterable, Sendable {
 }
 
 extension AnthropicModel {
-    init?(environmentValue: String) {
+    public init?(environmentValue: String) {
         self.init(rawValue: environmentValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
     }
 }

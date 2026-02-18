@@ -1,11 +1,15 @@
 @preconcurrency import SwiftAnthropic
 
-struct AnthropicClient: Sendable {
-    var generateText: @Sendable (String) async throws -> String
+public struct AnthropicClient: Sendable {
+    public var generateText: @Sendable (String) async throws -> String
+    
+    public init(generateText: @escaping @Sendable (String) async throws -> String) {
+        self.generateText = generateText
+    }
 }
 
 extension AnthropicClient {
-    static func live(
+    public static func live(
         apiKey: String,
         model: AnthropicModel,
         maxTokens: Int,

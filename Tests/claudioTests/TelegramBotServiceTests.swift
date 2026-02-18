@@ -1,5 +1,6 @@
 @testable import claudio
 import Testing
+import AnthropicClient
 
 @Suite("TelegramBotService Tests")
 struct TelegramBotServiceTests {

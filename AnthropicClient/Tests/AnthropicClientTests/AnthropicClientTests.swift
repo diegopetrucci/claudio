@@ -1,4 +1,4 @@
-@testable import claudio
+@testable import AnthropicClient
 import Foundation
 import SwiftAnthropic
 import Testing

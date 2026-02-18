@@ -1,4 +1,5 @@
 import Vapor
+import AnthropicClient
 
 extension Application {
     private struct AnthropicClientKey: StorageKey {

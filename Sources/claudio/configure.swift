@@ -9,6 +9,10 @@ public func configure(_ app: Application) async throws {
     
     configureTelegram(app)
     configureAnthropic(app)
+    app.telegramBotService = .live(
+        anthropicClient: app.anthropicClient,
+        telegramClient: app.telegramClient
+    )
     
     // register routes
     try routes(app)

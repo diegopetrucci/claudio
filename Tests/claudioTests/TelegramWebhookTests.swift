@@ -4,18 +4,16 @@ import VaporTesting
 
 @Suite("TelegramWebhook Tests")
 struct TelegramWebhookTests {
-    @Test("webhook responds with Anthropic output")
-    func webhookUsesAnthropicOutput() async throws {
-        let recorder = TelegramSendRecorder()
+    @Test("webhook delegates user text to bot service")
+    func webhookDelegatesToBotService() async throws {
+        let recorder = BotServiceCallRecorder()
 
         try await withApp(configure: { app in
-            app.anthropicClient = .init(generateText: { prompt in
-                "AI: \(prompt)"
-            })
-            app.telegramClient = .init(sendMessage: { chatID, text in
-                await recorder.record(chatID: chatID, text: text)
-                return TelegramSentMessage(messageID: 1)
-            })
+            app.telegramBotService = .init(
+                handleIncomingText: { chatID, text in
+                    await recorder.record(chatID: chatID, text: text)
+                }
+            )
             try routes(app)
         }, { app in
             let update = Self.makeUpdate(chatID: 101, text: "hello")
@@ -27,23 +25,20 @@ struct TelegramWebhookTests {
             })
         })
 
-        let calls = await recorder.allCalls()
-        #expect(calls.count == 1)
-        #expect(calls[0] == TelegramSendCall(chatID: 101, text: "AI: hello"))
+        let calls = await recorder.all()
+        #expect(calls == [BotServiceCall(chatID: 101, text: "hello")])
     }
 
     @Test("webhook ignores bot messages")
     func webhookIgnoresBotMessages() async throws {
-        let recorder = TelegramSendRecorder()
+        let recorder = BotServiceCallRecorder()
 
         try await withApp(configure: { app in
-            app.anthropicClient = .init(generateText: { prompt in
-                "AI: \(prompt)"
-            })
-            app.telegramClient = .init(sendMessage: { chatID, text in
-                await recorder.record(chatID: chatID, text: text)
-                return TelegramSentMessage(messageID: 1)
-            })
+            app.telegramBotService = .init(
+                handleIncomingText: { chatID, text in
+                    await recorder.record(chatID: chatID, text: text)
+                }
+            )
             try routes(app)
         }, { app in
             let update = Self.makeUpdate(chatID: 101, text: "hello", isBot: true)
@@ -55,23 +50,21 @@ struct TelegramWebhookTests {
             })
         })
 
-        let calls = await recorder.allCalls()
+        let calls = await recorder.all()
         #expect(calls.isEmpty)
     }
 
     @Test("webhook rejects invalid secret token")
     func webhookRejectsInvalidSecretToken() async throws {
-        let recorder = TelegramSendRecorder()
+        let recorder = BotServiceCallRecorder()
 
         try await withApp(configure: { app in
             app.telegramWebhookSecretToken = "expected-secret"
-            app.anthropicClient = .init(generateText: { prompt in
-                "AI: \(prompt)"
-            })
-            app.telegramClient = .init(sendMessage: { chatID, text in
-                await recorder.record(chatID: chatID, text: text)
-                return TelegramSentMessage(messageID: 1)
-            })
+            app.telegramBotService = .init(
+                handleIncomingText: { chatID, text in
+                    await recorder.record(chatID: chatID, text: text)
+                }
+            )
             try routes(app)
         }, { app in
             let update = Self.makeUpdate(chatID: 101, text: "hello")
@@ -84,23 +77,21 @@ struct TelegramWebhookTests {
             })
         })
 
-        let calls = await recorder.allCalls()
+        let calls = await recorder.all()
         #expect(calls.isEmpty)
     }
 
     @Test("webhook accepts valid secret token")
     func webhookAcceptsValidSecretToken() async throws {
-        let recorder = TelegramSendRecorder()
+        let recorder = BotServiceCallRecorder()
 
         try await withApp(configure: { app in
             app.telegramWebhookSecretToken = "expected-secret"
-            app.anthropicClient = .init(generateText: { prompt in
-                "AI: \(prompt)"
-            })
-            app.telegramClient = .init(sendMessage: { chatID, text in
-                await recorder.record(chatID: chatID, text: text)
-                return TelegramSentMessage(messageID: 1)
-            })
+            app.telegramBotService = .init(
+                handleIncomingText: { chatID, text in
+                    await recorder.record(chatID: chatID, text: text)
+                }
+            )
             try routes(app)
         }, { app in
             let update = Self.makeUpdate(chatID: 101, text: "hello")
@@ -113,8 +104,8 @@ struct TelegramWebhookTests {
             })
         })
 
-        let calls = await recorder.allCalls()
-        #expect(calls.count == 1)
+        let calls = await recorder.all()
+        #expect(calls == [BotServiceCall(chatID: 101, text: "hello")])
     }
 
     private static func makeUpdate(chatID: Int64, text: String, isBot: Bool = false) -> TelegramUpdate {
@@ -130,19 +121,19 @@ struct TelegramWebhookTests {
     }
 }
 
-private actor TelegramSendRecorder {
-    private var calls: [TelegramSendCall] = []
-
-    func record(chatID: Int64, text: String) {
-        self.calls.append(TelegramSendCall(chatID: chatID, text: text))
-    }
-
-    func allCalls() -> [TelegramSendCall] {
-        self.calls
-    }
-}
-
-private struct TelegramSendCall: Equatable, Sendable {
+private struct BotServiceCall: Equatable, Sendable {
     let chatID: Int64
     let text: String
+}
+
+private actor BotServiceCallRecorder {
+    private var calls: [BotServiceCall] = []
+
+    func record(chatID: Int64, text: String) {
+        self.calls.append(BotServiceCall(chatID: chatID, text: text))
+    }
+
+    func all() -> [BotServiceCall] {
+        self.calls
+    }
 }

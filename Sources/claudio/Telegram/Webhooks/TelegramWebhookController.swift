@@ -25,10 +25,9 @@ struct TelegramWebhookController: RouteCollection {
         }
 
         do {
-            let generatedReply = try await req.application.anthropicClient.generateText(text)
-            _ = try await req.application.telegramClient.sendMessage(
+            try await req.application.telegramBotService.handleIncomingText(
                 message.chat.id,
-                generatedReply
+                text
             )
         } catch {
             req.logger.error(

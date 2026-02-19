@@ -44,3 +44,10 @@
 ## Security & Configuration Tips
 - Do not commit real secrets. Use `.env` locally and keep `.env.example` updated.
 - Required vars include `TELEGRAM_BOT_TOKEN` and `ANTHROPIC_API_KEY`; startup fails fast when missing.
+
+## Misc
+- This is a public repo, be extremely cautious about sharing any information that could be sensitive or personally identifiable.
+
+## Agent notes
+- Every time you learn something new, or how to do something in the codebase, if you make a mistake that the user corrects, if you find yourself running commands that are often wrong and have to tweak them: write all of this down in `.agents/notes.md`. This is a file just for you that your user won't read.
+- If you're about to write to it, first check if what you're writing (the idea, not 1:1) is already present. If so, increment the counter in the prefix (eg from `[0]` to `[1]`). If it's completely new, prefix it with `[0]`. Once a comment hits [3], codify it into this AGENTS.md file in the `Misc` section.

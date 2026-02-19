@@ -7,3 +7,4 @@
 [0] Shared JSON codec configuration for SessionStore should live in dedicated source files (e.g., JSONDecoder.swift/JSONEncoder.swift) and be reused from SessionStore.swift.
 [0] Formatting preference: for tiny `guard` else branches, place `else` on the next line with a single-line body (`else { return ... }`, `else { continue }`, `else { throw ... }`).
 [0] Formatting preference: for tiny `defer` bodies, use single-line form (`defer { ... }`).
+[1] In `configure.swift`, follow existing pattern of dedicated `configureX(app)` helper functions instead of inlining setup logic in `configure(_:)`.

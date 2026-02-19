@@ -1,5 +1,6 @@
 import Vapor
 import AnthropicClient
+import SessionStore
 import TelegramClient
 import TelegramBotService
 import TelegramPollingLifecycleHandler
@@ -10,13 +11,12 @@ public func configure(_ app: Application) async throws {
     // app.middleware.use(FileMiddleware(publicDirectory: app.directory.publicDirectory))
     
     await DotEnvFile.load(for: app.environment, fileio: app.fileio, logger: app.logger)
+
+    try configureSessionStore(app)
     
     configureTelegram(app)
     configureAnthropic(app)
-    app.telegramBotService = .live(
-        anthropicClient: app.anthropicClient,
-        telegramClient: app.telegramClient
-    )
+    configureTelegramBotService(app)
     app.lifecycle.use(
         TelegramPollingLifecycleHandler(
             getUpdates: app.telegramClient.getUpdates,
@@ -28,6 +28,17 @@ public func configure(_ app: Application) async throws {
     
     // register routes
     try routes(app)
+}
+
+private func configureSessionStore(
+    _ app: Application,
+) throws {
+    app.sessionStore = try .live(
+        baseDirectoryURL: URL(
+            fileURLWithPath: app.directory.workingDirectory,
+            isDirectory: true
+        )
+    )
 }
 
 private func configureTelegram(
@@ -75,5 +86,15 @@ private func configureAnthropic(
         model: anthropicModel,
         maxTokens: anthropicMaxTokens,
         systemPrompt: anthropicSystemPrompt
+    )
+}
+
+private func configureTelegramBotService(
+    _ app: Application,
+) {
+    app.telegramBotService = .live(
+        anthropicClient: app.anthropicClient,
+        telegramClient: app.telegramClient,
+        sessionStore: app.sessionStore
     )
 }

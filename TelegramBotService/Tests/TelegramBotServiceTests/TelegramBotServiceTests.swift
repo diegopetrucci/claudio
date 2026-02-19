@@ -1,5 +1,6 @@
 import Testing
 import AnthropicClient
+import SessionStore
 import TelegramClient
 @testable import TelegramBotService
 
@@ -9,6 +10,7 @@ struct TelegramBotServiceTests {
     func handleIncomingTextSuccess() async throws {
         let promptRecorder = PromptRecorder()
         let sendRecorder = TelegramSendRecorder()
+        let sessionRecorder = SessionAppendRecorder()
 
         let anthropicClient = AnthropicClient(
             generateText: { prompt in
@@ -25,9 +27,18 @@ struct TelegramBotServiceTests {
                 []
             }
         )
+        let sessionStore = SessionStore(
+            loadSession: { _ in [] },
+            appendMessage: { chatID, role, text, _ in
+                await sessionRecorder.record(chatID: chatID, role: role, text: text)
+            },
+            loadLastProcessedUpdateID: { nil },
+            saveLastProcessedUpdateID: { _ in }
+        )
         let service = TelegramBotService.live(
             anthropicClient: anthropicClient,
-            telegramClient: telegramClient
+            telegramClient: telegramClient,
+            sessionStore: sessionStore
         )
 
         try await service.handleIncomingText(101, "hello")
@@ -36,11 +47,19 @@ struct TelegramBotServiceTests {
         #expect(prompts == ["hello"])
         let calls = await sendRecorder.allCalls()
         #expect(calls == [BotServiceSendCall(chatID: 101, text: "AI: hello")])
+        let sessionCalls = await sessionRecorder.allCalls()
+        #expect(
+            sessionCalls == [
+                SessionAppendCall(chatID: 101, role: .user, text: "hello"),
+                SessionAppendCall(chatID: 101, role: .assistant, text: "AI: hello"),
+            ]
+        )
     }
 
     @Test("handleIncomingText propagates anthropic failures")
     func handleIncomingTextAnthropicFailure() async throws {
         let sendRecorder = TelegramSendRecorder()
+        let sessionRecorder = SessionAppendRecorder()
 
         let anthropicClient = AnthropicClient(
             generateText: { _ in
@@ -56,9 +75,18 @@ struct TelegramBotServiceTests {
                 []
             }
         )
+        let sessionStore = SessionStore(
+            loadSession: { _ in [] },
+            appendMessage: { chatID, role, text, _ in
+                await sessionRecorder.record(chatID: chatID, role: role, text: text)
+            },
+            loadLastProcessedUpdateID: { nil },
+            saveLastProcessedUpdateID: { _ in }
+        )
         let service = TelegramBotService.live(
             anthropicClient: anthropicClient,
-            telegramClient: telegramClient
+            telegramClient: telegramClient,
+            sessionStore: sessionStore
         )
 
         do {
@@ -70,6 +98,8 @@ struct TelegramBotServiceTests {
 
         let calls = await sendRecorder.allCalls()
         #expect(calls.isEmpty)
+        let sessionCalls = await sessionRecorder.allCalls()
+        #expect(sessionCalls == [SessionAppendCall(chatID: 101, role: .user, text: "hello")])
     }
 }
 
@@ -101,7 +131,31 @@ private actor TelegramSendRecorder {
     }
 }
 
+private actor SessionAppendRecorder {
+    private var calls: [SessionAppendCall] = []
+
+    func record(chatID: Int64, role: SessionMessageRole, text: String) {
+        self.calls.append(
+            SessionAppendCall(
+                chatID: chatID,
+                role: role,
+                text: text
+            )
+        )
+    }
+
+    func allCalls() -> [SessionAppendCall] {
+        self.calls
+    }
+}
+
 private struct BotServiceSendCall: Equatable, Sendable {
     let chatID: Int64
+    let text: String
+}
+
+private struct SessionAppendCall: Equatable, Sendable {
+    let chatID: Int64
+    let role: SessionMessageRole
     let text: String
 }

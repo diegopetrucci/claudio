@@ -15,6 +15,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../AnthropicClient"),
+        .package(path: "../SessionStore"),
         .package(path: "../TelegramClient"),
     ],
     targets: [
@@ -22,6 +23,7 @@ let package = Package(
             name: "TelegramBotService",
             dependencies: [
                 "AnthropicClient",
+                "SessionStore",
                 "TelegramClient",
             ]
         ),
@@ -29,6 +31,7 @@ let package = Package(
             name: "TelegramBotServiceTests",
             dependencies: [
                 .target(name: "TelegramBotService"),
+                "SessionStore",
             ]
         ),
     ]

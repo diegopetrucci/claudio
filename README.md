@@ -1,27 +1,18 @@
 # claudio
 
-💧 A project built with the Vapor web framework.
+A reimplementation of OpenClaw in Swift & Vapor. Loosely based on the brilliant [You could've invented OpenClaw](https://gist.github.com/dabit3/bc60d3bea0b02927995cd9bf53c3db32) post.
 
 ## Getting Started
 
-To build the project using the Swift Package Manager, run the following command in the terminal from the root of the project:
-```bash
-swift build
-```
+1. Fill in the required environment variables `cp .env.example .env`
+2. Run the project `swift run`
+3. Stop the execution via `control + c`
 
-To run the project and start the server, use the following command:
-```bash
-swift run
-```
+## Development
 
-To execute tests, use the following command:
-```bash
-swift test
-```
+1. Build with `swift build`, or using Xcode
+2. Run tests with `swift test`
 
 ### See more
 
-- [Vapor Website](https://vapor.codes)
-- [Vapor Documentation](https://docs.vapor.codes)
-- [Vapor GitHub](https://github.com/vapor)
-- [Vapor Community](https://github.com/vapor-community)
+- [OpenClaw](https://github.com/openclaw/openclaw)

@@ -5,17 +5,20 @@ public struct SessionStore: Sendable {
     public var appendMessage: @Sendable (Int64, SessionMessageRole, String, Date) async throws -> Void
     public var loadLastProcessedUpdateID: @Sendable () async throws -> Int?
     public var saveLastProcessedUpdateID: @Sendable (Int) async throws -> Void
+    public var flush: @Sendable () async throws -> Void
 
     public init(
         loadSession: @escaping @Sendable (Int64) async throws -> [SessionMessage],
         appendMessage: @escaping @Sendable (Int64, SessionMessageRole, String, Date) async throws -> Void,
         loadLastProcessedUpdateID: @escaping @Sendable () async throws -> Int?,
-        saveLastProcessedUpdateID: @escaping @Sendable (Int) async throws -> Void
+        saveLastProcessedUpdateID: @escaping @Sendable (Int) async throws -> Void,
+        flush: @escaping @Sendable () async throws -> Void
     ) {
         self.loadSession = loadSession
         self.appendMessage = appendMessage
         self.loadLastProcessedUpdateID = loadLastProcessedUpdateID
         self.saveLastProcessedUpdateID = saveLastProcessedUpdateID
+        self.flush = flush
     }
 }
 
@@ -118,6 +121,26 @@ extension SessionStore {
                     to: pollingCursorFileURL(sessionsDirectoryURL: sessionsDirectoryURL),
                     options: [.atomic]
                 )
+            },
+            flush: {
+                let fileURLs = try FileManager.default.contentsOfDirectory(
+                    at: sessionsDirectoryURL,
+                    includingPropertiesForKeys: nil
+                )
+
+                for fileURL in fileURLs {
+                    var isDirectory = ObjCBool(false)
+                    guard FileManager.default.fileExists(
+                        atPath: fileURL.path(),
+                        isDirectory: &isDirectory
+                    ),
+                        !isDirectory.boolValue
+                    else { continue }
+
+                    let fileHandle = try FileHandle(forUpdating: fileURL)
+                    defer { try? fileHandle.close() }
+                    try fileHandle.synchronize()
+                }
             }
         )
     }

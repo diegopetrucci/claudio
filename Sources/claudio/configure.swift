@@ -23,6 +23,7 @@ public func configure(_ app: Application) async throws {
             handleIncomingText: app.telegramBotService.handleIncomingText,
             loadLastProcessedUpdateID: app.sessionStore.loadLastProcessedUpdateID,
             saveLastProcessedUpdateID: app.sessionStore.saveLastProcessedUpdateID,
+            flushSessions: app.sessionStore.flush,
             logger: app.logger,
             pollTimeoutSeconds: 30
         )

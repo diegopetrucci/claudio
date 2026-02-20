@@ -83,6 +83,31 @@ struct TelegramPollingLifecycleHandlerTests {
             throw error
         }
     }
+
+    @Test("shutdownAsync flushes sessions")
+    func shutdownAsyncFlushesSessions() async throws {
+        let flushRecorder = FlushRecorder()
+        let handler = TelegramPollingLifecycleHandler(
+            getUpdates: { _, _ in [] },
+            handleIncomingText: { _, _ in },
+            flushSessions: {
+                await flushRecorder.markCalled()
+            },
+            logger: Logger(label: "tests.polling.flush"),
+            pollTimeoutSeconds: 1,
+            retryDelayNanoseconds: 1_000_000
+        )
+
+        let app = try await Application.make(.testing)
+        do {
+            await handler.shutdownAsync(app)
+            #expect(await flushRecorder.wasCalled())
+            try await app.asyncShutdown()
+        } catch {
+            try? await app.asyncShutdown()
+            throw error
+        }
+    }
 }
 
 private actor OffsetRecorder {
@@ -106,6 +131,18 @@ private actor SavedUpdateIDRecorder {
 
     func contains(_ updateID: Int) -> Bool {
         self.updateIDs.contains(updateID)
+    }
+}
+
+private actor FlushRecorder {
+    private var called = false
+
+    func markCalled() {
+        self.called = true
+    }
+
+    func wasCalled() -> Bool {
+        self.called
     }
 }
 

@@ -6,6 +6,7 @@ public final class TelegramPollingLifecycleHandler: LifecycleHandler, @unchecked
     let handleIncomingText: @Sendable (Int64, String) async throws -> Void
     let loadLastProcessedUpdateID: @Sendable () async throws -> Int?
     let saveLastProcessedUpdateID: @Sendable (Int) async throws -> Void
+    let flushSessions: @Sendable () async throws -> Void
     let logger: Logger
     let pollTimeoutSeconds: Int
     let retryDelayNanoseconds: UInt64
@@ -16,6 +17,7 @@ public final class TelegramPollingLifecycleHandler: LifecycleHandler, @unchecked
         handleIncomingText: @escaping @Sendable (Int64, String) async throws -> Void,
         loadLastProcessedUpdateID: @escaping @Sendable () async throws -> Int? = { nil },
         saveLastProcessedUpdateID: @escaping @Sendable (Int) async throws -> Void = { _ in },
+        flushSessions: @escaping @Sendable () async throws -> Void = {},
         logger: Logger,
         pollTimeoutSeconds: Int = 30,
         retryDelayNanoseconds: UInt64 = 2_000_000_000
@@ -24,6 +26,7 @@ public final class TelegramPollingLifecycleHandler: LifecycleHandler, @unchecked
         self.handleIncomingText = handleIncomingText
         self.loadLastProcessedUpdateID = loadLastProcessedUpdateID
         self.saveLastProcessedUpdateID = saveLastProcessedUpdateID
+        self.flushSessions = flushSessions
         self.logger = logger
         self.pollTimeoutSeconds = pollTimeoutSeconds
         self.retryDelayNanoseconds = retryDelayNanoseconds
@@ -117,13 +120,21 @@ public final class TelegramPollingLifecycleHandler: LifecycleHandler, @unchecked
     }
 
     public func shutdownAsync(_ application: Application) async {
-        let task = await self.taskState.take()
-        guard let task else {
-            return
+        if let task = await self.taskState.take() {
+            task.cancel()
+            _ = await task.result
         }
 
-        task.cancel()
-        _ = await task.result
+        do {
+            try await self.flushSessions()
+        } catch {
+            self.logger.error(
+                "Failed to flush session store on shutdown",
+                metadata: [
+                    "error": .string(error.localizedDescription),
+                ]
+            )
+        }
     }
 }
 

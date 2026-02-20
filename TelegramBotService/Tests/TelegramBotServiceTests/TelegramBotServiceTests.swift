@@ -33,7 +33,8 @@ struct TelegramBotServiceTests {
                 await sessionRecorder.record(chatID: chatID, role: role, text: text)
             },
             loadLastProcessedUpdateID: { nil },
-            saveLastProcessedUpdateID: { _ in }
+            saveLastProcessedUpdateID: { _ in },
+            flush: {}
         )
         let service = TelegramBotService.live(
             anthropicClient: anthropicClient,
@@ -81,7 +82,8 @@ struct TelegramBotServiceTests {
                 await sessionRecorder.record(chatID: chatID, role: role, text: text)
             },
             loadLastProcessedUpdateID: { nil },
-            saveLastProcessedUpdateID: { _ in }
+            saveLastProcessedUpdateID: { _ in },
+            flush: {}
         )
         let service = TelegramBotService.live(
             anthropicClient: anthropicClient,

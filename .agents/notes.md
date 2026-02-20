@@ -8,3 +8,4 @@
 [0] Formatting preference: for tiny `guard` else branches, place `else` on the next line with a single-line body (`else { return ... }`, `else { continue }`, `else { throw ... }`).
 [0] Formatting preference: for tiny `defer` bodies, use single-line form (`defer { ... }`).
 [1] In `configure.swift`, follow existing pattern of dedicated `configureX(app)` helper functions instead of inlining setup logic in `configure(_:)`.
+[0] For quit persistence, wire a `flush` closure through lifecycle shutdown and invoke it even if the polling task was never started.

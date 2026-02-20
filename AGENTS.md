@@ -7,7 +7,7 @@
   - `AnthropicClient`
   - `TelegramClient`
   - `TelegramBotService`
-  - `TelegramPollingLifecycleHandler`
+  - `AppLifecycleHandler`
 - Static/public assets are in `Public/`.
 - Environment templates are in `.env.example`.
 
@@ -24,7 +24,7 @@
 - Use Swift naming defaults:
   - Types/protocols: `UpperCamelCase`
   - Functions/properties/variables: `lowerCamelCase`
-- Keep module boundaries clear: API clients in their package, orchestration in `TelegramBotService`, lifecycle wiring in `TelegramPollingLifecycleHandler`.
+- Keep module boundaries clear: API clients in their package, orchestration in `TelegramBotService`, lifecycle wiring in `AppLifecycleHandler`.
 
 ## Testing Guidelines
 - Use Swift Testing (`import Testing`, `@Suite`, `@Test`, `#expect`).

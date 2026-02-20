@@ -1,14 +1,14 @@
 import Testing
 import TelegramClient
 import Vapor
-@testable import TelegramPollingLifecycleHandler
+@testable import AppLifecycleHandler
 
-@Suite("TelegramPollingLifecycleHandler Tests")
-struct TelegramPollingLifecycleHandlerTests {
+@Suite("AppLifecycleHandler Tests")
+struct AppLifecycleHandlerTests {
     @Test("didBootAsync starts polling from persisted cursor")
     func didBootAsyncStartsPollingFromPersistedCursor() async throws {
         let offsetRecorder = OffsetRecorder()
-        let handler = TelegramPollingLifecycleHandler(
+        let handler = AppLifecycleHandler(
             getUpdates: { offset, _ in
                 await offsetRecorder.record(offset)
                 try await Task.sleep(nanoseconds: 5_000_000)
@@ -43,7 +43,7 @@ struct TelegramPollingLifecycleHandlerTests {
     @Test("didBootAsync persists cursor after processing updates")
     func didBootAsyncPersistsCursorAfterProcessingUpdates() async throws {
         let savedUpdateIDRecorder = SavedUpdateIDRecorder()
-        let handler = TelegramPollingLifecycleHandler(
+        let handler = AppLifecycleHandler(
             getUpdates: { _, _ in
                 [
                     TelegramUpdate(
@@ -87,7 +87,7 @@ struct TelegramPollingLifecycleHandlerTests {
     @Test("shutdownAsync flushes sessions")
     func shutdownAsyncFlushesSessions() async throws {
         let flushRecorder = FlushRecorder()
-        let handler = TelegramPollingLifecycleHandler(
+        let handler = AppLifecycleHandler(
             getUpdates: { _, _ in [] },
             handleIncomingText: { _, _ in },
             flushSessions: {

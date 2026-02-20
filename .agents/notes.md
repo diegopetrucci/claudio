@@ -16,3 +16,4 @@
 [0] `SessionStoreError` bridged as NSError uses code `0` for `unableToCreateSessionFile(String)` and code `1` for `invalidUTF8`; `localizedDescription` alone is opaque.
 [0] In this package setup, adding `LocalizedError` conformance requires `import Foundation` in the defining source file.
 [0] For file-system work in this repo's `SessionStore`, prefer `URL.path` (decoded) over `URL.path()`; the latter can surface percent-encoded paths (e.g. `%20`) and break `FileManager` lookups/creation.
+[0] When user requests a lifecycle naming refactor, apply it consistently at type + package + directory level (not just symbol rename) to match repo expectations.

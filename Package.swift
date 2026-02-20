@@ -13,7 +13,7 @@ let package = Package(
         .package(path: "SessionStore"),
         .package(path: "TelegramClient"),
         .package(path: "TelegramBotService"),
-        .package(path: "TelegramPollingLifecycleHandler"),
+        .package(path: "AppLifecycleHandler"),
     ],
     targets: [
         .executableTarget(
@@ -26,7 +26,7 @@ let package = Package(
                 "SessionStore",
                 "TelegramClient",
                 "TelegramBotService",
-                "TelegramPollingLifecycleHandler",
+                "AppLifecycleHandler",
             ],
             swiftSettings: swiftSettings
         ),
@@ -39,7 +39,7 @@ let package = Package(
                 "SessionStore",
                 "TelegramClient",
                 "TelegramBotService",
-                "TelegramPollingLifecycleHandler",
+                "AppLifecycleHandler",
             ],
             swiftSettings: swiftSettings
         )

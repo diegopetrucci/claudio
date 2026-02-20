@@ -3,7 +3,7 @@ import AnthropicClient
 import SessionStore
 import TelegramClient
 import TelegramBotService
-import TelegramPollingLifecycleHandler
+import AppLifecycleHandler
 
 // configures your application
 public func configure(_ app: Application) async throws {
@@ -18,7 +18,7 @@ public func configure(_ app: Application) async throws {
     configureAnthropic(app)
     configureTelegramBotService(app)
     app.lifecycle.use(
-        TelegramPollingLifecycleHandler(
+        AppLifecycleHandler(
             getUpdates: app.telegramClient.getUpdates,
             handleIncomingText: app.telegramBotService.handleIncomingText,
             loadLastProcessedUpdateID: app.sessionStore.loadLastProcessedUpdateID,

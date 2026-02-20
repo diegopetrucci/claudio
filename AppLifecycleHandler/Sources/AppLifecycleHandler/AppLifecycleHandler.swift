@@ -1,7 +1,7 @@
 import Vapor
 import TelegramClient
 
-public final class TelegramPollingLifecycleHandler: LifecycleHandler, @unchecked Sendable {
+public final class AppLifecycleHandler: LifecycleHandler, @unchecked Sendable {
     let getUpdates: @Sendable (Int?, Int) async throws -> [TelegramUpdate]
     let handleIncomingText: @Sendable (Int64, String) async throws -> Void
     let loadLastProcessedUpdateID: @Sendable () async throws -> Int?

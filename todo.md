@@ -2,9 +2,9 @@
 
 - Fix Docker build caching step with local path dependencies:
   - `Dockerfile` runs `swift package resolve` before local packages are copied.
-  - Adjust the Docker layering strategy so path dependencies (`AnthropicClient`, `TelegramClient`, `TelegramBotService`, `TelegramPollingLifecycleHandler`) exist before resolve.
+  - Adjust the Docker layering strategy so path dependencies (`AnthropicClient`, `TelegramClient`, `TelegramBotService`, `AppLifecycleHandler`) exist before resolve.
 
-- Add meaningful tests for `TelegramPollingLifecycleHandler`:
+- Add meaningful tests for `AppLifecycleHandler`:
   - Cover offset progression (`update_id + 1` behavior).
   - Cover retry-after-error behavior and cancellation/shutdown semantics.
 

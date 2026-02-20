@@ -3,14 +3,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "TelegramPollingLifecycleHandler",
+    name: "AppLifecycleHandler",
     platforms: [
         .macOS(.v13),
     ],
     products: [
         .library(
-            name: "TelegramPollingLifecycleHandler",
-            targets: ["TelegramPollingLifecycleHandler"]
+            name: "AppLifecycleHandler",
+            targets: ["AppLifecycleHandler"]
         ),
     ],
     dependencies: [
@@ -19,16 +19,16 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "TelegramPollingLifecycleHandler",
+            name: "AppLifecycleHandler",
             dependencies: [
                 .product(name: "Vapor", package: "vapor"),
                 "TelegramClient",
             ]
         ),
         .testTarget(
-            name: "TelegramPollingLifecycleHandlerTests",
+            name: "AppLifecycleHandlerTests",
             dependencies: [
-                .target(name: "TelegramPollingLifecycleHandler"),
+                .target(name: "AppLifecycleHandler"),
                 .product(name: "Vapor", package: "vapor"),
                 "TelegramClient",
             ]

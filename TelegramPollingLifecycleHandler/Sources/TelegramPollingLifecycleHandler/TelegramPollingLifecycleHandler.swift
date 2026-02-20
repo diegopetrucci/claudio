@@ -4,6 +4,8 @@ import TelegramClient
 public final class TelegramPollingLifecycleHandler: LifecycleHandler, @unchecked Sendable {
     let getUpdates: @Sendable (Int?, Int) async throws -> [TelegramUpdate]
     let handleIncomingText: @Sendable (Int64, String) async throws -> Void
+    let loadLastProcessedUpdateID: @Sendable () async throws -> Int?
+    let saveLastProcessedUpdateID: @Sendable (Int) async throws -> Void
     let logger: Logger
     let pollTimeoutSeconds: Int
     let retryDelayNanoseconds: UInt64
@@ -12,12 +14,16 @@ public final class TelegramPollingLifecycleHandler: LifecycleHandler, @unchecked
     public init(
         getUpdates: @escaping @Sendable (Int?, Int) async throws -> [TelegramUpdate],
         handleIncomingText: @escaping @Sendable (Int64, String) async throws -> Void,
+        loadLastProcessedUpdateID: @escaping @Sendable () async throws -> Int? = { nil },
+        saveLastProcessedUpdateID: @escaping @Sendable (Int) async throws -> Void = { _ in },
         logger: Logger,
         pollTimeoutSeconds: Int = 30,
         retryDelayNanoseconds: UInt64 = 2_000_000_000
     ) {
         self.getUpdates = getUpdates
         self.handleIncomingText = handleIncomingText
+        self.loadLastProcessedUpdateID = loadLastProcessedUpdateID
+        self.saveLastProcessedUpdateID = saveLastProcessedUpdateID
         self.logger = logger
         self.pollTimeoutSeconds = pollTimeoutSeconds
         self.retryDelayNanoseconds = retryDelayNanoseconds
@@ -27,19 +33,32 @@ public final class TelegramPollingLifecycleHandler: LifecycleHandler, @unchecked
     public func didBootAsync(_ application: Application) async throws {
         let getUpdates = self.getUpdates
         let handleIncomingText = self.handleIncomingText
+        let loadLastProcessedUpdateID = self.loadLastProcessedUpdateID
+        let saveLastProcessedUpdateID = self.saveLastProcessedUpdateID
         let logger = self.logger
         let pollTimeoutSeconds = self.pollTimeoutSeconds
         let retryDelayNanoseconds = self.retryDelayNanoseconds
 
+        let initialLastProcessedUpdateID: Int?
+        do {
+            initialLastProcessedUpdateID = try await loadLastProcessedUpdateID()
+        } catch {
+            logger.error(
+                "Failed to load Telegram polling cursor",
+                metadata: [
+                    "error": .string(error.localizedDescription),
+                ]
+            )
+            initialLastProcessedUpdateID = nil
+        }
+
         let newTask = Task {
-            var offset: Int?
+            var lastProcessedUpdateID = initialLastProcessedUpdateID
+            var offset = initialLastProcessedUpdateID.map { $0 + 1 }
 
             while !Task.isCancelled {
                 do {
                     let updates = try await getUpdates(offset, pollTimeoutSeconds)
-                    if let maxUpdateID = updates.map(\.updateID).max() {
-                        offset = maxUpdateID + 1
-                    }
 
                     for update in updates {
                         await handleUpdate(
@@ -47,6 +66,30 @@ public final class TelegramPollingLifecycleHandler: LifecycleHandler, @unchecked
                             logger,
                             handleIncomingText,
                         )
+
+                        let nextProcessedUpdateID: Int
+                        if let lastProcessedUpdateID {
+                            nextProcessedUpdateID = max(lastProcessedUpdateID, update.updateID)
+                        } else {
+                            nextProcessedUpdateID = update.updateID
+                        }
+
+                        if lastProcessedUpdateID != nextProcessedUpdateID {
+                            lastProcessedUpdateID = nextProcessedUpdateID
+                            offset = nextProcessedUpdateID + 1
+
+                            do {
+                                try await saveLastProcessedUpdateID(nextProcessedUpdateID)
+                            } catch {
+                                logger.error(
+                                    "Failed to persist Telegram polling cursor",
+                                    metadata: [
+                                        "update_id": .stringConvertible(nextProcessedUpdateID),
+                                        "error": .string(error.localizedDescription),
+                                    ]
+                                )
+                            }
+                        }
                     }
                 } catch {
                     if Task.isCancelled {

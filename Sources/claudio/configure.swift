@@ -21,6 +21,8 @@ public func configure(_ app: Application) async throws {
         TelegramPollingLifecycleHandler(
             getUpdates: app.telegramClient.getUpdates,
             handleIncomingText: app.telegramBotService.handleIncomingText,
+            loadLastProcessedUpdateID: app.sessionStore.loadLastProcessedUpdateID,
+            saveLastProcessedUpdateID: app.sessionStore.saveLastProcessedUpdateID,
             logger: app.logger,
             pollTimeoutSeconds: 30
         )

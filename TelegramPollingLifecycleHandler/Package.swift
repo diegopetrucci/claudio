@@ -29,6 +29,8 @@ let package = Package(
             name: "TelegramPollingLifecycleHandlerTests",
             dependencies: [
                 .target(name: "TelegramPollingLifecycleHandler"),
+                .product(name: "Vapor", package: "vapor"),
+                "TelegramClient",
             ]
         ),
     ]

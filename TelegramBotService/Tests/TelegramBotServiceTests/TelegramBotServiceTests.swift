@@ -151,6 +151,44 @@ struct TelegramBotServiceTests {
         let sends = await sendRecorder.allCalls()
         #expect(sends == [BotServiceSendCall(chatID: 101, text: "AI reply")])
     }
+
+    @Test("handleIncomingText does not persist assistant response when send fails")
+    func handleIncomingTextSendFailure() async throws {
+        let promptRecorder = PromptRecorder()
+        let sessionRecorder = SessionStoreRecorder()
+
+        let anthropicClient = AnthropicClient(
+            generateText: { prompt in
+                await promptRecorder.record(prompt)
+                return "AI reply"
+            }
+        )
+        let telegramClient = TelegramClient(
+            sendMessage: { _, _ in
+                throw StubError.failed
+            },
+            getUpdates: { _, _ in
+                []
+            }
+        )
+        let service = TelegramBotService.live(
+            anthropicClient: anthropicClient,
+            telegramClient: telegramClient,
+            sessionStore: makeSessionStore(sessionRecorder)
+        )
+
+        do {
+            try await service.handleIncomingText(101, "hello")
+            Issue.record("Expected failure, but call succeeded.")
+        } catch let error as StubError {
+            #expect(error == .failed)
+        }
+
+        let prompts = await promptRecorder.all()
+        #expect(prompts == ["User: hello\nAssistant:"])
+        let sessionCalls = await sessionRecorder.allCalls()
+        #expect(sessionCalls == [SessionAppendCall(chatID: 101, role: .user, text: "hello")])
+    }
 }
 
 private enum StubError: Error {

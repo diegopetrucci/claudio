@@ -17,3 +17,4 @@
 [0] In this package setup, adding `LocalizedError` conformance requires `import Foundation` in the defining source file.
 [0] For file-system work in this repo's `SessionStore`, prefer `URL.path` (decoded) over `URL.path()`; the latter can surface percent-encoded paths (e.g. `%20`) and break `FileManager` lookups/creation.
 [0] When user requests a lifecycle naming refactor, apply it consistently at type + package + directory level (not just symbol rename) to match repo expectations.
+[0] Module inventory in this repo includes `SessionStore` as a first-class local package dependency of both root app and `TelegramBotService`; documentation that lists only four local packages is outdated.

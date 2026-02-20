@@ -42,7 +42,8 @@ extension SessionStore {
                     chatID: chatID,
                     sessionsDirectoryURL: sessionsDirectoryURL
                 )
-                guard FileManager.default.fileExists(atPath: fileURL.path())
+                let filePath = fileURL.path
+                guard FileManager.default.fileExists(atPath: filePath)
                 else { return [] }
                 
                 let data = try Data(contentsOf: fileURL)
@@ -69,12 +70,23 @@ extension SessionStore {
                 return messages
             },
             appendMessage: { chatID, role, text, timestamp in
+                try FileManager.default.createDirectory(
+                    at: sessionsDirectoryURL,
+                    withIntermediateDirectories: true
+                )
+
                 let fileURL = sessionFileURL(
                     chatID: chatID,
                     sessionsDirectoryURL: sessionsDirectoryURL
                 )
-                if !FileManager.default.fileExists(atPath: fileURL.path()) {
-                    FileManager.default.createFile(atPath: fileURL.path(), contents: nil)
+                let filePath = fileURL.path
+                if !FileManager.default.fileExists(atPath: filePath) {
+                    let didCreateFile = FileManager.default.createFile(
+                        atPath: filePath,
+                        contents: nil
+                    )
+                    guard didCreateFile || FileManager.default.fileExists(atPath: filePath)
+                    else { throw SessionStoreError.unableToCreateSessionFile(filePath) }
                 }
                 
                 let message = SessionMessage(
@@ -98,7 +110,8 @@ extension SessionStore {
             },
             loadLastProcessedUpdateID: {
                 let fileURL = pollingCursorFileURL(sessionsDirectoryURL: sessionsDirectoryURL)
-                guard FileManager.default.fileExists(atPath: fileURL.path())
+                let filePath = fileURL.path
+                guard FileManager.default.fileExists(atPath: filePath)
                 else { return nil }
                 
                 let data = try Data(contentsOf: fileURL)
@@ -123,6 +136,9 @@ extension SessionStore {
                 )
             },
             flush: {
+                guard FileManager.default.fileExists(atPath: sessionsDirectoryURL.path)
+                else { return }
+
                 let fileURLs = try FileManager.default.contentsOfDirectory(
                     at: sessionsDirectoryURL,
                     includingPropertiesForKeys: nil
@@ -130,8 +146,9 @@ extension SessionStore {
 
                 for fileURL in fileURLs {
                     var isDirectory = ObjCBool(false)
+                    let filePath = fileURL.path
                     guard FileManager.default.fileExists(
-                        atPath: fileURL.path(),
+                        atPath: filePath,
                         isDirectory: &isDirectory
                     ),
                         !isDirectory.boolValue

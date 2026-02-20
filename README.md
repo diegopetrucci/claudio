@@ -15,10 +15,44 @@ Loosely based on the brilliant [You could've invented OpenClaw](https://gist.git
 1. Build with `swift build`, or using Xcode
 2. Run tests with `swift test`
 
-## Session Persistence
+## Troubleshooting
 
-- Sessions are persisted under `.sessions/` in the project working directory.
-- One transcript file is maintained per Telegram chat (`<chatID>.jsonl`).
-- Telegram polling cursor is persisted in `.sessions/polling_cursor.json` to avoid duplicate processing on restart.
-- User and assistant messages are appended as they arrive.
-- Session history is included in prompt generation for new replies.
+### `Address already in use` (`errno: 48`)
+
+If `swift run` shows:
+
+```text
+[ WARNING ] bind(descriptor:ptr:bytes:): Address already in use) (errno: 48)
+```
+
+the app built correctly, but another process is already listening on the configured port (default: `8080`).
+
+Find what is listening:
+
+```bash
+lsof -nP -iTCP:8080 -sTCP:LISTEN
+```
+
+Stop the process (example):
+
+```bash
+kill <PID>
+```
+
+If the process is still listening after `kill <PID>`, check its state:
+
+```bash
+ps -p <PID> -o pid=,stat=,command=
+```
+
+If state is `T` (stopped), force kill it:
+
+```bash
+kill -9 <PID>
+```
+
+Or run on another port:
+
+```bash
+PORT=8081 swift run
+```

@@ -85,11 +85,63 @@ struct SessionStoreTests {
 
         try await sessionStore.flush()
     }
+
+    @Test("append recreates sessions directory if removed")
+    func appendRecreatesSessionsDirectoryIfRemoved() async throws {
+        let baseDirectoryURL = try makeTemporaryDirectoryURL()
+        defer { try? FileManager.default.removeItem(at: baseDirectoryURL) }
+
+        let sessionStore = try SessionStore.live(baseDirectoryURL: baseDirectoryURL)
+        let sessionsDirectoryURL = baseDirectoryURL.appendingPathComponent(".sessions", isDirectory: true)
+        try FileManager.default.removeItem(at: sessionsDirectoryURL)
+
+        try await sessionStore.appendMessage(
+            101,
+            .user,
+            "hello",
+            Date(timeIntervalSince1970: 100)
+        )
+
+        let messages = try await sessionStore.loadSession(101)
+        #expect(
+            messages == [
+                SessionMessage(
+                    role: .user,
+                    text: "hello",
+                    timestamp: Date(timeIntervalSince1970: 100)
+                ),
+            ]
+        )
+    }
+
+    @Test("append and load work when base directory path contains spaces")
+    func appendAndLoadWithSpaceInBaseDirectoryPath() async throws {
+        let baseDirectoryURL = try makeTemporaryDirectoryURL(prefix: "Session Store Tests")
+        defer { try? FileManager.default.removeItem(at: baseDirectoryURL) }
+
+        let sessionStore = try SessionStore.live(baseDirectoryURL: baseDirectoryURL)
+        let timestamp = Date(timeIntervalSince1970: 100)
+
+        try await sessionStore.appendMessage(101, .user, "hello", timestamp)
+
+        let messages = try await sessionStore.loadSession(101)
+        #expect(
+            messages == [
+                SessionMessage(
+                    role: .user,
+                    text: "hello",
+                    timestamp: timestamp
+                ),
+            ]
+        )
+    }
 }
 
-private func makeTemporaryDirectoryURL() throws -> URL {
+private func makeTemporaryDirectoryURL(
+    prefix: String = "SessionStoreTests"
+) throws -> URL {
     let directoryURL = FileManager.default.temporaryDirectory
-        .appendingPathComponent("SessionStoreTests-\(UUID().uuidString)", isDirectory: true)
+        .appendingPathComponent("\(prefix)-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
     return directoryURL
 }

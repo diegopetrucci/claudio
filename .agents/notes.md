@@ -11,3 +11,8 @@
 [0] For quit persistence, wire a `flush` closure through lifecycle shutdown and invoke it even if the polling task was never started.
 [0] Session persistence is not only storage: generated replies must use session history context in prompts.
 [0] Telegram session files are keyed by `chat.id` (for example `123.jsonl`); `from.id` is decoded only for sender checks and is not part of the session key.
+[0] In SessionStore append paths, do not assume `.sessions` still exists; recreate directory and verify file creation result before opening file handles.
+[1] If `swift run` logs `Address already in use` (`errno: 48`), an existing `claudio` process is usually already bound to `127.0.0.1:8080`; verify with `lsof -nP -iTCP:8080 -sTCP:LISTEN`, then `kill <PID>` (and if it remains in `T`/stopped state, use `kill -9 <PID>`) or run with `PORT=8081`.
+[0] `SessionStoreError` bridged as NSError uses code `0` for `unableToCreateSessionFile(String)` and code `1` for `invalidUTF8`; `localizedDescription` alone is opaque.
+[0] In this package setup, adding `LocalizedError` conformance requires `import Foundation` in the defining source file.
+[0] For file-system work in this repo's `SessionStore`, prefer `URL.path` (decoded) over `URL.path()`; the latter can surface percent-encoded paths (e.g. `%20`) and break `FileManager` lookups/creation.

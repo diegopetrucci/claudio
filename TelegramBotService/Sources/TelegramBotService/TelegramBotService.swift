@@ -27,7 +27,17 @@ extension TelegramBotService {
                     text,
                     Date()
                 )
-                let generatedReply = try await anthropicClient.generateText(text)
+                let history = try await sessionStore.loadSession(chatID)
+                let promptLines = history.suffix(20).map { message in
+                    switch message.role {
+                    case .user:
+                        return "User: \(message.text)"
+                    case .assistant:
+                        return "Assistant: \(message.text)"
+                    }
+                }
+                let prompt = (promptLines + ["Assistant:"]).joined(separator: "\n")
+                let generatedReply = try await anthropicClient.generateText(prompt)
                 try await sessionStore.appendMessage(
                     chatID,
                     .assistant,

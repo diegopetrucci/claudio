@@ -14,3 +14,11 @@ Loosely based on the brilliant [You could've invented OpenClaw](https://gist.git
 
 1. Build with `swift build`, or using Xcode
 2. Run tests with `swift test`
+
+## Session Persistence
+
+- Sessions are persisted under `.sessions/` in the project working directory.
+- One transcript file is maintained per Telegram chat (`<chatID>.jsonl`).
+- Telegram polling cursor is persisted in `.sessions/polling_cursor.json` to avoid duplicate processing on restart.
+- User and assistant messages are appended as they arrive.
+- Session history is included in prompt generation for new replies.

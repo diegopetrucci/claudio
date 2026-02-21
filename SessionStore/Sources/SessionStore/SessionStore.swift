@@ -125,6 +125,11 @@ extension SessionStore {
                 return cursor.lastProcessedUpdateID
             },
             saveLastProcessedUpdateID: { updateID in
+                try FileManager.default.createDirectory(
+                    at: sessionsDirectoryURL,
+                    withIntermediateDirectories: true
+                )
+
                 let cursor = PollingCursor(
                     schemaVersion: 1,
                     lastProcessedUpdateID: updateID

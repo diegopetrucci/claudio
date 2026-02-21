@@ -18,3 +18,8 @@
 [0] For file-system work in this repo's `SessionStore`, prefer `URL.path` (decoded) over `URL.path()`; the latter can surface percent-encoded paths (e.g. `%20`) and break `FileManager` lookups/creation.
 [0] When user requests a lifecycle naming refactor, apply it consistently at type + package + directory level (not just symbol rename) to match repo expectations.
 [0] Module inventory in this repo includes `SessionStore` as a first-class local package dependency of both root app and `TelegramBotService`; documentation that lists only four local packages is outdated.
+[0] In polling lifecycle code, do not swallow `handleIncomingText` failures if cursor advancement is tied to loop progress; otherwise failed updates get acknowledged and are lost after restart.
+[0] In polling lifecycle code, rethrowing `handleIncomingText` failures before advancing `offset` can create a poison-message loop (same update retried forever); handle transient vs permanent failures explicitly.
+[0] Top-level `private` types are file-scoped in Swift; shared helper types under `Sources/<Module>/` that are referenced across files (for example `PollingTaskState`) must be at least internal.
+[0] In SessionStore, recreate `.sessions` before writing `polling_cursor.json` just like append paths, so cursor persistence survives directory deletion at runtime.
+[0] In this workspace, `swift test` at repo root runs only root target tests; run `swift test --package-path <LocalPackage>` for changed local packages (e.g. SessionStore, TelegramBotService, AppLifecycleHandler).

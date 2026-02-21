@@ -1,7 +1,7 @@
 import Vapor
 import TelegramClient
 
-public final class AppLifecycleHandler: LifecycleHandler, @unchecked Sendable {
+public final class AppLifecycleHandler: @unchecked Sendable {
     let getUpdates: @Sendable (Int?, Int) async throws -> [TelegramUpdate]
     let handleIncomingText: @Sendable (Int64, String) async throws -> Void
     let loadLastProcessedUpdateID: @Sendable () async throws -> Int?
@@ -11,7 +11,7 @@ public final class AppLifecycleHandler: LifecycleHandler, @unchecked Sendable {
     let pollTimeoutSeconds: Int
     let retryDelayNanoseconds: UInt64
     private let taskState: PollingTaskState
-
+    
     public init(
         getUpdates: @escaping @Sendable (Int?, Int) async throws -> [TelegramUpdate],
         handleIncomingText: @escaping @Sendable (Int64, String) async throws -> Void,
@@ -32,7 +32,9 @@ public final class AppLifecycleHandler: LifecycleHandler, @unchecked Sendable {
         self.retryDelayNanoseconds = retryDelayNanoseconds
         self.taskState = PollingTaskState()
     }
+}
 
+extension AppLifecycleHandler: LifecycleHandler {
     public func didBootAsync(_ application: Application) async throws {
         let getUpdates = self.getUpdates
         let handleIncomingText = self.handleIncomingText
@@ -64,11 +66,25 @@ public final class AppLifecycleHandler: LifecycleHandler, @unchecked Sendable {
                     let updates = try await getUpdates(offset, pollTimeoutSeconds)
 
                     for update in updates {
-                        await handleUpdate(
-                            update,
-                            logger,
-                            handleIncomingText,
-                        )
+                        do {
+                            try await handleUpdate(
+                                update,
+                                handleIncomingText,
+                            )
+                        } catch let error as CancellationError {
+                            throw error
+                        } catch {
+                            logger.error(
+                                "Failed to process polled Telegram message",
+                                metadata: [
+                                    "update_id": .stringConvertible(update.updateID),
+                                    "chat_id": update.message.map { .stringConvertible($0.chat.id) } ?? .string("n/a"),
+                                    "acknowledged": .string("true"),
+                                    "error": .string(error.localizedDescription),
+                                ]
+                            )
+                            // Keep advancing the cursor to avoid retrying a poison message forever.
+                        }
 
                         let nextProcessedUpdateID: Int
                         if let lastProcessedUpdateID {
@@ -138,42 +154,14 @@ public final class AppLifecycleHandler: LifecycleHandler, @unchecked Sendable {
     }
 }
 
-private actor PollingTaskState {
-    private var task: Task<Void, Never>?
-
-    func replace(with newTask: Task<Void, Never>) -> Task<Void, Never>? {
-        let previous = self.task
-        self.task = newTask
-        return previous
-    }
-
-    func take() -> Task<Void, Never>? {
-        let current = self.task
-        self.task = nil
-        return current
-    }
-}
-
 private func handleUpdate(
     _ update: TelegramUpdate,
-    _ logger: Logger,
     _ handleIncomingText: @Sendable (Int64, String) async throws -> Void,
-) async {
+) async throws {
     guard let message = update.message else { return }
     if message.from?.isBot == true { return }
 
     guard let text = message.text, !text.isEmpty else { return }
 
-    do {
-        try await handleIncomingText(message.chat.id, text)
-    } catch {
-        logger.error(
-            "Failed to process polled Telegram message",
-            metadata: [
-                "update_id": .stringConvertible(update.updateID),
-                "chat_id": .stringConvertible(message.chat.id),
-                "error": .string(error.localizedDescription),
-            ]
-        )
-    }
+    try await handleIncomingText(message.chat.id, text)
 }

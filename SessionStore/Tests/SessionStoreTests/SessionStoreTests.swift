@@ -69,6 +69,19 @@ struct SessionStoreTests {
         #expect(try await sessionStore.loadLastProcessedUpdateID() == 77)
     }
 
+    @Test("cursor save recreates sessions directory if removed")
+    func cursorSaveRecreatesSessionsDirectoryIfRemoved() async throws {
+        let baseDirectoryURL = try makeTemporaryDirectoryURL()
+        defer { try? FileManager.default.removeItem(at: baseDirectoryURL) }
+
+        let sessionStore = try SessionStore.live(baseDirectoryURL: baseDirectoryURL)
+        let sessionsDirectoryURL = baseDirectoryURL.appendingPathComponent(".sessions", isDirectory: true)
+        try FileManager.default.removeItem(at: sessionsDirectoryURL)
+
+        try await sessionStore.saveLastProcessedUpdateID(77)
+        #expect(try await sessionStore.loadLastProcessedUpdateID() == 77)
+    }
+
     @Test("flush succeeds")
     func flushSucceeds() async throws {
         let baseDirectoryURL = try makeTemporaryDirectoryURL()

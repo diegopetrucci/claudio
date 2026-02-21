@@ -8,11 +8,14 @@ struct AnthropicClientTests {
     @Test("generateText builds message request and returns text response")
     func generateTextBuildsRequest() async throws {
         let recorder = AnthropicRequestRecorder()
-        let client = AnthropicClient.live(
+        let client = try AnthropicClient.live(
+            apiKey: "test-key",
             model: .sonnet,
             maxTokens: 256,
-            systemPrompt: "You are concise.",
-            createMessage: { parameter in
+            loadSystemPrompt: {
+                "You are concise."
+            },
+            createMessageOverride: { parameter in
                 await recorder.record(Self.captureRequest(from: parameter))
                 return try Self.decodeMessageResponse(
                     #"""
@@ -45,10 +48,14 @@ struct AnthropicClientTests {
 
     @Test("generateText concatenates all text blocks")
     func generateTextConcatsTextBlocks() async throws {
-        let client = AnthropicClient.live(
+        let client = try AnthropicClient.live(
+            apiKey: "test-key",
             model: .sonnet,
             maxTokens: 256,
-            createMessage: { _ in
+            loadSystemPrompt: {
+                "You are concise."
+            },
+            createMessageOverride: { _ in
                 try Self.decodeMessageResponse(
                     #"""
                     {
@@ -75,10 +82,14 @@ struct AnthropicClientTests {
 
     @Test("generateText throws when response contains no text blocks")
     func generateTextThrowsWhenNoText() async throws {
-        let client = AnthropicClient.live(
+        let client = try AnthropicClient.live(
+            apiKey: "test-key",
             model: .sonnet,
             maxTokens: 256,
-            createMessage: { _ in
+            loadSystemPrompt: {
+                "You are concise."
+            },
+            createMessageOverride: { _ in
                 try Self.decodeMessageResponse(
                     #"""
                     {
@@ -103,8 +114,77 @@ struct AnthropicClientTests {
             switch error {
             case .missingTextContent:
                 break
+            default:
+                Issue.record("Expected AnthropicClientError.missingTextContent, but got \(error).")
             }
         }
+    }
+
+    @Test("loadSystemPrompt reads file content")
+    func loadSystemPromptReadsFileContent() throws {
+        let tempDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectoryURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectoryURL) }
+
+        let promptFileURL = tempDirectoryURL.appendingPathComponent("SOUL.md")
+        try "You are Claudius.".write(to: promptFileURL, atomically: true, encoding: .utf8)
+
+        let prompt = try AnthropicClient.loadSystemPrompt(filePath: promptFileURL.path)
+        #expect(prompt == "You are Claudius.")
+    }
+
+    @Test("loadSystemPrompt throws for empty file")
+    func loadSystemPromptThrowsForEmptyFile() throws {
+        let tempDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectoryURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectoryURL) }
+
+        let promptFileURL = tempDirectoryURL.appendingPathComponent("SOUL.md")
+        try "\n\n".write(to: promptFileURL, atomically: true, encoding: .utf8)
+
+        do {
+            _ = try AnthropicClient.loadSystemPrompt(filePath: promptFileURL.path)
+            Issue.record("Expected AnthropicClientError.emptySystemPromptFile, but call succeeded.")
+        } catch let error as AnthropicClientError {
+            switch error {
+            case let .emptySystemPromptFile(path):
+                #expect(path == promptFileURL.path)
+            default:
+                Issue.record("Expected AnthropicClientError.emptySystemPromptFile, but got \(error).")
+            }
+        }
+    }
+
+    @Test("ensureSystemPromptFileExists writes default content when missing")
+    func ensureSystemPromptFileExistsWritesDefaultContentWhenMissing() throws {
+        let tempDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectoryURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectoryURL) }
+
+        let promptFileURL = tempDirectoryURL.appendingPathComponent("SOUL.md")
+        try AnthropicClient.ensureSystemPromptFileExists(filePath: promptFileURL.path)
+
+        let prompt = try String(contentsOf: promptFileURL, encoding: .utf8)
+        #expect(prompt == AnthropicClient.defaultSystemPrompt)
+    }
+
+    @Test("ensureSystemPromptFileExists does not overwrite existing file")
+    func ensureSystemPromptFileExistsDoesNotOverwriteExistingFile() throws {
+        let tempDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectoryURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectoryURL) }
+
+        let promptFileURL = tempDirectoryURL.appendingPathComponent("SOUL.md")
+        try "Custom prompt".write(to: promptFileURL, atomically: true, encoding: .utf8)
+
+        try AnthropicClient.ensureSystemPromptFileExists(filePath: promptFileURL.path)
+
+        let prompt = try String(contentsOf: promptFileURL, encoding: .utf8)
+        #expect(prompt == "Custom prompt")
     }
 
     private static func decodeMessageResponse(_ json: String) throws -> MessageResponse {

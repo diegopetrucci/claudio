@@ -23,3 +23,7 @@
 [0] Top-level `private` types are file-scoped in Swift; shared helper types under `Sources/<Module>/` that are referenced across files (for example `PollingTaskState`) must be at least internal.
 [0] In SessionStore, recreate `.sessions` before writing `polling_cursor.json` just like append paths, so cursor persistence survives directory deletion at runtime.
 [0] In this workspace, `swift test` at repo root runs only root target tests; run `swift test --package-path <LocalPackage>` for changed local packages (e.g. SessionStore, TelegramBotService, AppLifecycleHandler).
+[0] Anthropic system behavior is sourced from `SOUL.md` via file I/O in `AnthropicClient`; do not expose runtime/env/user overrides for this system prompt.
+[0] For AnthropicClient-style APIs, prefer a single `.live(...)` entrypoint with injectable closures (system prompt loader and message sender) for tests instead of multiple `.live` overloads.
+[0] Ensure `SOUL.md` exists at startup (create with canonical content if missing) before constructing `AnthropicClient.live`, so Docker/runtime launches are not blocked by missing prompt files.
+[0] Keep `AnthropicClient.defaultSystemPrompt` as the canonical in-code SOUL content and reuse it in file-writing/tests to avoid symbol drift and package-test compile breaks.

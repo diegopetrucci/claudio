@@ -12,31 +12,20 @@ public func configure(_ app: Application) async throws {
     
     await DotEnvFile.load(for: app.environment, fileio: app.fileio, logger: app.logger)
 
-    try configureSessionStore(app)
-    
-    configureTelegram(app)
-    configureAnthropic(app)
-    configureTelegramBotService(app)
-    app.lifecycle.use(
-        AppLifecycleHandler(
-            getUpdates: app.telegramClient.getUpdates,
-            handleIncomingText: app.telegramBotService.handleIncomingText,
-            loadLastProcessedUpdateID: app.sessionStore.loadLastProcessedUpdateID,
-            saveLastProcessedUpdateID: app.sessionStore.saveLastProcessedUpdateID,
-            flushSessions: app.sessionStore.flush,
-            logger: app.logger,
-            pollTimeoutSeconds: 30
-        )
-    )
+    app.sessionStore = try sessionStore(app)
+    app.telegramClient = telegramClient(app)
+    app.anthropicClient = try anthropicClient(app)
+    app.telegramBotService = telegramBotService(app)
+    app.lifecycle.use(appLifecycleHandler(app))
     
     // register routes
     try routes(app)
 }
 
-private func configureSessionStore(
+private func sessionStore(
     _ app: Application,
-) throws {
-    app.sessionStore = try .live(
+) throws -> SessionStore {
+    try .live(
         baseDirectoryURL: URL(
             fileURLWithPath: app.directory.workingDirectory,
             isDirectory: true
@@ -44,19 +33,19 @@ private func configureSessionStore(
     )
 }
 
-private func configureTelegram(
+private func telegramClient(
     _ app: Application,
-) {
+) -> TelegramClient {
     guard let botToken = Environment.get("TELEGRAM_BOT_TOKEN"), !botToken.isEmpty else {
         fatalError("Missing TELEGRAM_BOT_TOKEN. Configure it in the environment before starting the app.")
     }
     
-    app.telegramClient = .live(client: app.client, botToken: botToken)
+    return .live(client: app.client, botToken: botToken)
 }
 
-private func configureAnthropic(
+private func anthropicClient(
     _ app: Application,
-) {
+) throws -> AnthropicClient {
     guard
         let anthropicAPIKey = Environment.get("ANTHROPIC_API_KEY"),
         !anthropicAPIKey.isEmpty
@@ -81,23 +70,35 @@ private func configureAnthropic(
     guard anthropicMaxTokens > 0 else {
         fatalError("ANTHROPIC_MAX_TOKENS must be greater than zero.")
     }
-    
-    let anthropicSystemPrompt = Environment.get("ANTHROPIC_SYSTEM_PROMPT")
-        .flatMap { $0.isEmpty ? nil : $0 }
-    app.anthropicClient = .live(
+
+    try AnthropicClient.ensureSystemPromptFileExists()
+    return .live(
         apiKey: anthropicAPIKey,
         model: anthropicModel,
-        maxTokens: anthropicMaxTokens,
-        systemPrompt: anthropicSystemPrompt
+        maxTokens: anthropicMaxTokens
     )
 }
 
-private func configureTelegramBotService(
+private func telegramBotService(
     _ app: Application,
-) {
-    app.telegramBotService = .live(
+) -> TelegramBotService {
+    .live(
         anthropicClient: app.anthropicClient,
         telegramClient: app.telegramClient,
         sessionStore: app.sessionStore
+    )
+}
+
+private func appLifecycleHandler(
+    _ app: Application,
+) -> AppLifecycleHandler {
+    AppLifecycleHandler(
+        getUpdates: app.telegramClient.getUpdates,
+        handleIncomingText: app.telegramBotService.handleIncomingText,
+        loadLastProcessedUpdateID: app.sessionStore.loadLastProcessedUpdateID,
+        saveLastProcessedUpdateID: app.sessionStore.saveLastProcessedUpdateID,
+        flushSessions: app.sessionStore.flush,
+        logger: app.logger,
+        pollTimeoutSeconds: 30
     )
 }

@@ -1,30 +1,28 @@
 import Foundation
 
-public enum ToolExecutorError: Error, Equatable {
-    case missingCommand
-    case timedOut(seconds: TimeInterval)
-}
-
 public struct ToolExecutor: Sendable {
-    public var executeTool: @Sendable (String, [String: String]) throws -> String?
+    public var runCommand: @Sendable (String, TimeInterval) throws -> String
+    public var readFile: @Sendable (String) throws -> String
+    public var writeFile: @Sendable (String, String) throws -> Void
+    public var webSearch: @Sendable (String) throws -> String
 
     public init(
-        executeTool: @escaping @Sendable (String, [String: String]) throws -> String?
+        runCommand: @escaping @Sendable (String, TimeInterval) throws -> String,
+        readFile: @escaping @Sendable (String) throws -> String,
+        writeFile: @escaping @Sendable (String, String) throws -> Void,
+        webSearch: @escaping @Sendable (String) throws -> String
     ) {
-        self.executeTool = executeTool
+        self.runCommand = runCommand
+        self.readFile = readFile
+        self.writeFile = writeFile
+        self.webSearch = webSearch
     }
 }
 
 extension ToolExecutor {
-    public static func live(commandTimeout: TimeInterval = 30) -> Self {
+    public static func live() -> Self {
         .init(
-            executeTool: { name, input in
-                guard name == "run_command"
-                else { return nil }
-
-                guard let command = input["command"]
-                else { throw ToolExecutorError.missingCommand }
-
+            runCommand: { command, timeout in
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: "/bin/sh")
                 process.arguments = ["-c", command]
@@ -34,15 +32,22 @@ extension ToolExecutor {
                 process.standardOutput = stdoutPipe
                 process.standardError = stderrPipe
 
-                try process.run()
+                do {
+                    try process.run()
+                } catch {
+                    throw ToolExecutorError.runCommandExecutionFailed(
+                        command: command,
+                        description: error.localizedDescription
+                    )
+                }
 
-                let deadline = Date().addingTimeInterval(commandTimeout)
+                let deadline = Date().addingTimeInterval(timeout)
                 while process.isRunning {
                     guard Date() < deadline
                     else {
                         process.terminate()
                         process.waitUntilExit()
-                        throw ToolExecutorError.timedOut(seconds: commandTimeout)
+                        throw ToolExecutorError.runCommandTimedOut(seconds: timeout)
                     }
                     Thread.sleep(forTimeInterval: 0.01)
                 }
@@ -55,7 +60,63 @@ extension ToolExecutor {
                     data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
                     encoding: .utf8
                 ) ?? ""
-                return stdout + stderr
+
+                guard process.terminationStatus == 0
+                else {
+                    let description = stderr.isEmpty
+                        ? "Command exited with status \(process.terminationStatus)."
+                        : stderr
+                    throw ToolExecutorError.runCommandExecutionFailed(
+                        command: command,
+                        description: description
+                    )
+                }
+
+                guard stderr.isEmpty
+                else {
+                    throw ToolExecutorError.runCommandExecutionFailed(
+                        command: command,
+                        description: stderr
+                    )
+                }
+
+                return stdout
+            },
+            readFile: { path in
+                do {
+                    return try String(contentsOfFile: path, encoding: .utf8)
+                } catch {
+                    throw ToolExecutorError.readFileFailed(
+                        path: path,
+                        description: error.localizedDescription
+                    )
+                }
+            },
+            writeFile: { path, content in
+                let fileURL = URL(fileURLWithPath: path)
+                do {
+                    try FileManager.default.createDirectory(
+                        at: fileURL.deletingLastPathComponent(),
+                        withIntermediateDirectories: true
+                    )
+                } catch {
+                    throw ToolExecutorError.writeFileCreateDirectoryFailed(
+                        path: path,
+                        description: error.localizedDescription
+                    )
+                }
+
+                do {
+                    try content.write(to: fileURL, atomically: true, encoding: .utf8)
+                } catch {
+                    throw ToolExecutorError.writeFileWriteContentFailed(
+                        path: path,
+                        description: error.localizedDescription
+                    )
+                }
+            },
+            webSearch: { query in
+                throw ToolExecutorError.webSearchNotImplemented(query: query)
             }
         )
     }

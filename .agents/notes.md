@@ -1,5 +1,5 @@
 [1] New service boundaries in this repo should use protocol-witness style structs (closure-based APIs, like TelegramClient/TelegramBotService) instead of exposing concrete actor types directly.
-[1] Keep one top-level model/object per source file (for example: SessionMessageRole.swift, SessionMessage.swift, SessionStore.swift).
+[2] Keep one top-level model/object per source file (for example: SessionMessageRole.swift, SessionMessage.swift, SessionStore.swift).
 [0] For witness-style services, avoid a second "live implementation" type; keep the live implementation directly in the witness file/extension (like TelegramClient.live).
 [0] Session persistence models/store types belong in their own package rather than under TelegramBotService.
 [0] Do not add forward-looking APIs/dependencies before they are needed (for example: no unused flush endpoint and no unused package imports).
@@ -27,3 +27,14 @@
 [0] For AnthropicClient-style APIs, prefer a single `.live(...)` entrypoint with injectable closures (system prompt loader and message sender) for tests instead of multiple `.live` overloads.
 [0] Ensure `SOUL.md` exists at startup (create with canonical content if missing) before constructing `AnthropicClient.live`, so Docker/runtime launches are not blocked by missing prompt files.
 [0] Keep `AnthropicClient.defaultSystemPrompt` as the canonical in-code SOUL content and reuse it in file-writing/tests to avoid symbol drift and package-test compile breaks.
+[0] For tool catalogs, model tool identity as an enum and each concrete tool as its own struct, instead of a single undifferentiated list model.
+[0] In this repo, tool metadata is now centralized in a single enum (`AvailableTools`) with computed name/description/schema and a generated `tools` catalog, instead of per-tool structs.
+[0] In ToolExecutor, prefer non-redundant names for tool models (`Tool`, `RunCommand`, `ReadFile`, etc.) over namespaced/repeated suffix forms.
+[0] If `Tool` uses associated values (payload cases), avoid `CaseIterable`/`rawValue` assumptions; keep a separate explicit `tools` catalog and parse `name + input` into `Tool` before dispatch.
+[1] In this repo's ToolExecutor design, expose separate tool-specific witness closures (`runCommand`, `readFile`, `writeFile`, `webSearch`) instead of a generic `executeTool` entrypoint.
+[1] Tool-specific settings (for example command timeout) should be carried on the relevant tool-specific call rather than as a global `ToolExecutor.live(...)` parameter.
+[0] In ToolExecutor, define tool-specific error cases (run/read/write/web) and wrap underlying failures in the matching case instead of using generic errors.
+[0] For `writeFile` in ToolExecutor, split failure cases into directory-creation and content-write errors rather than a single write error bucket.
+[0] In ToolExecutor `runCommand`, return stdout only; treat any stderr output (and non-zero exit) as `runCommandExecutionFailed`.
+[0] With per-tool witness closures in ToolExecutor, nested per-tool `Input` DTO structs are redundant and can be removed; keep only tool definition metadata.
+[0] In ToolExecutor, `writeFile` should return `Void` (success via no throw, failure via throw) instead of returning a status string.

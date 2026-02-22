@@ -56,3 +56,9 @@ Or run on another port:
 ```bash
 PORT=8081 swift run
 ```
+
+## Dependencies
+
+- [SwiftAnthropic](https://github.com/jamesrochabrun/SwiftAnthropic)
+- [Vapor](https://github.com/vapor/vapor)
+- [SwiftNIO](https://github.com/apple/swift-nio)

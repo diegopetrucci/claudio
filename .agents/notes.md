@@ -38,3 +38,4 @@
 [0] In ToolExecutor `runCommand`, return stdout only; treat any stderr output (and non-zero exit) as `runCommandExecutionFailed`.
 [0] With per-tool witness closures in ToolExecutor, nested per-tool `Input` DTO structs are redundant and can be removed; keep only tool definition metadata.
 [0] In ToolExecutor, `writeFile` should return `Void` (success via no throw, failure via throw) instead of returning a status string.
+[0] Dependency docs should reflect actual manifests: root external packages include Vapor and swift-nio, while SwiftAnthropic is consumed via the local AnthropicClient package.

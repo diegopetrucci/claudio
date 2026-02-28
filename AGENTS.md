@@ -5,9 +5,12 @@
 - Root tests live in `Tests/claudioTests`.
 - Shared functionality is split into local Swift packages, each with its own `Sources/` and `Tests/`:
   - `AnthropicClient`
+  - `SessionStore`
   - `TelegramClient`
   - `TelegramBotService`
   - `AppLifecycleHandler`
+  - `ToolExecutor`
+  - `SearchTool`
 - Static/public assets are in `Public/`.
 - Environment templates are in `.env.example`.
 
@@ -43,7 +46,8 @@
 
 ## Security & Configuration Tips
 - Do not commit real secrets. Use `.env` locally and keep `.env.example` updated.
-- Required vars include `TELEGRAM_BOT_TOKEN` and `ANTHROPIC_API_KEY`; startup fails fast when missing.
+- Required vars include `TELEGRAM_BOT_TOKEN`, `ALLOWED_TELEGRAM_CHAT_IDS`, and `ANTHROPIC_API_KEY`; startup fails fast when missing.
+- `SOUL.md` is required at startup and must be present with non-empty content.
 
 ## Misc
 - This is a public repo, be extremely cautious about sharing any information that could be sensitive or personally identifiable.

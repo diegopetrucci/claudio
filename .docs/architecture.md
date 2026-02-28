@@ -7,11 +7,11 @@
 1. Long-polls Telegram for new updates.
 2. Filters incoming messages by an allowlist of Telegram `chat.id` values.
 3. Builds a text prompt from persisted per-chat history.
-4. Calls Anthropic and supports tool-use rounds.
+4. Calls Anthropic with tool-use support.
 5. Sends the final response back to Telegram.
-6. Persists both chat history and the polling cursor on disk.
+6. Persists chat history and the polling cursor on disk.
 
-The executable target is intentionally thin: startup/configuration and lifecycle wiring happen in `Sources/claudio`, while behavior is implemented in local packages.
+The executable target in `Sources/claudio` remains intentionally thin: it owns startup/configuration, environment wiring, and lifecycle registration. Runtime behavior lives in local packages.
 
 ## Module Boundaries
 
@@ -21,21 +21,22 @@ The executable target is intentionally thin: startup/configuration and lifecycle
 - Responsibilities:
   - Startup/shutdown (`entrypoint.swift`)
   - Environment loading and dependency wiring (`configure.swift`)
-  - Store dependencies in `Application.storage` keys
-  - Register `AppLifecycleHandler` as the runtime loop
+  - System prompt loading/validation (`SystemPromptLoader`)
+  - Store service witnesses in `Application.storage`
+  - Register `AppLifecycleHandler` for polling runtime
   - HTTP routes (currently empty)
 
 ### `AppLifecycleHandler`
 
 - Files: `AppLifecycleHandler/Sources/AppLifecycleHandler/*`
 - Responsibilities:
-  - Parse allowed chat IDs from `ALLOWED_TELEGRAM_CHAT_IDS`
-  - Start polling loop on app boot
+  - Parse/validate `ALLOWED_TELEGRAM_CHAT_IDS`
+  - Start polling loop on boot
   - Resume from persisted cursor (`lastProcessedUpdateID`)
-  - Ignore non-text, bot-originated, or unauthorized chat messages
-  - Dispatch valid text messages to `TelegramBotService`
+  - Ignore non-text, bot-originated, and unauthorized chat messages
+  - Dispatch authorized text messages to `TelegramBotService`
   - Persist cursor after each processed update (including failed handling)
-  - Retry polling failures with backoff
+  - Retry polling request failures with backoff
   - Cancel polling task and flush sessions on shutdown
 
 ### `TelegramBotService`
@@ -43,24 +44,25 @@ The executable target is intentionally thin: startup/configuration and lifecycle
 - File: `TelegramBotService/Sources/TelegramBotService/TelegramBotService.swift`
 - Responsibilities:
   - Append incoming user message to session history
-  - Build prompt from last 20 session messages
+  - Build prompt from last 20 persisted messages
   - Call `AnthropicClient.respond`
   - Send generated reply to Telegram
-  - Append assistant message after successful send
+  - Append assistant reply only after successful send
 
 ### `AnthropicClient`
 
 - Files: `AnthropicClient/Sources/AnthropicClient/*`
 - Responsibilities:
   - Wrap Anthropic Messages API interaction
-  - Resolve model from `AnthropicModel`
-  - Load system prompt from `SOUL.md`
-  - Ensure `SOUL.md` exists at startup (writes default prompt if missing)
-  - Execute tool-use loops (up to 6 rounds) and feed tool results back to Anthropic
+  - Resolve API model from `AnthropicModel`
+  - Execute tool-use loops (up to 6 rounds)
+  - Validate required tool inputs (required keys, string type checks)
   - Return final text response
 - Depends on:
   - `SwiftAnthropic`
   - `ToolExecutor`
+
+Note: `AnthropicClient` no longer reads `SOUL.md` directly. The app layer injects prompt content via `systemPrompt`.
 
 ### `ToolExecutor`
 
@@ -69,12 +71,12 @@ The executable target is intentionally thin: startup/configuration and lifecycle
   - Execute shell commands (`run_command`) with timeout
   - Read files (`read_file`)
   - Write files (`write_file`)
-  - Execute web search (`web_search`) via `SearchTool` when configured
-  - Define tool catalog/schema exposed to Anthropic
-  - Surface per-tool typed errors
+  - Execute web search (`web_search`) when `SearchTool` is configured
+  - Define the tool catalog/schema exposed to Anthropic
+  - Surface typed per-tool errors
 - Current state:
-  - `web_search` is always advertised in the tool catalog.
-  - If `WEB_SEARCH_API_KEY` is unset, execution fails with `webSearchNotConfigured`.
+  - `web_search` is always present in the advertised tool catalog.
+  - If no search client is injected, `web_search` fails with `webSearchNotConfigured`.
 
 ### `SearchTool`
 
@@ -82,9 +84,9 @@ The executable target is intentionally thin: startup/configuration and lifecycle
 - Responsibilities:
   - Provider-agnostic search client wrapper
   - Current live implementation targets Brave Search API
-  - Request construction, response decoding, and transport/status error mapping
+  - Request construction, response decoding, and transport/status mapping
 - Current state:
-  - Wired into `ToolExecutor.live(searchTool:)` when `WEB_SEARCH_API_KEY` is present.
+  - Wired into `ToolExecutor.live(searchTool:)` only when `WEB_SEARCH_API_KEY` is set.
 
 ### `TelegramClient`
 
@@ -111,6 +113,8 @@ graph TD
     A --> D["TelegramClient"]
     A --> E["AnthropicClient"]
     A --> F["SessionStore"]
+    A --> G["ToolExecutor"]
+    A --> H["SearchTool (optional wiring)"]
 
     B --> D
     B --> C
@@ -120,8 +124,8 @@ graph TD
     C --> E
     C --> F
 
-    E --> G["ToolExecutor"]
-    G --> H["SearchTool (enabled when WEB_SEARCH_API_KEY is set)"]
+    E --> G
+    G --> H
 ```
 
 ## Runtime Flow
@@ -134,8 +138,8 @@ graph TD
    - constructs `ToolExecutor.live(...)`:
      - default `ToolExecutor.live()` when `WEB_SEARCH_API_KEY` is missing
      - injects `SearchTool.live(apiKey:)` when `WEB_SEARCH_API_KEY` is present
-   - constructs `AnthropicClient.live(...)` (requires `ANTHROPIC_API_KEY`, receives configured `ToolExecutor`)
-   - ensures `SOUL.md` exists
+   - loads `SOUL.md` via `SystemPromptLoader.load()` (must exist and be non-empty)
+   - constructs `AnthropicClient.live(...)` (requires `ANTHROPIC_API_KEY`, receives loaded prompt and configured `ToolExecutor`)
    - constructs `TelegramBotService.live(...)`
    - constructs/registers `AppLifecycleHandler` (requires `ALLOWED_TELEGRAM_CHAT_IDS`)
 3. On boot, `AppLifecycleHandler.didBootAsync`:
@@ -147,16 +151,18 @@ graph TD
    - ignore empty text
    - ignore chats not in allowlist
    - call `TelegramBotService.handleIncomingText(chatID, text)`
-   - advance/persist cursor regardless of handling success to avoid poison-message replay loops
+   - advance/persist cursor regardless of handling success (avoids poison-message replay loops)
 5. `TelegramBotService.handleIncomingText`:
    - append user message to session file
-   - load session and build prompt from the latest 20 messages (`User:` / `Assistant:` lines + trailing `Assistant:`)
+   - load session and build prompt from latest 20 messages (`User:` / `Assistant:` lines + trailing `Assistant:`)
    - call `AnthropicClient.respond`
    - send reply via `TelegramClient.sendMessage`
    - append assistant reply to session file
 6. `AnthropicClient.respond`:
-   - sends message to Anthropic with system prompt and tool catalog
-   - if Anthropic requests tool use, executes tools via `ToolExecutor`, appends `tool_result` (`isError` on failures), and re-queries Anthropic
+   - sends message to Anthropic with system prompt and full tool catalog
+   - if Anthropic requests tool use, validates input and executes tools via `ToolExecutor`
+   - appends `tool_result` blocks (`isError: true` when execution fails), then re-queries Anthropic
+   - truncates long tool output before returning results to Anthropic
    - repeats until final text is returned or max tool rounds is reached
 7. On shutdown, lifecycle handler cancels polling task and flushes `SessionStore`.
 
@@ -171,13 +177,13 @@ Storage root: `./.sessions` (relative to app working directory).
 - Polling cursor: `polling_cursor.json`
   - fields: `schemaVersion`, `lastProcessedUpdateID`
 
-This guarantees conversation and polling continuity across restarts.
+This provides conversation and polling continuity across restarts.
 
 ## Concurrency Model
 
-- Service packages are mostly closure-based witness structs marked `Sendable`.
-- Polling task lifecycle is managed by actor `PollingTaskState`.
-- `AppLifecycleHandler` is `@unchecked Sendable`, with mutable task state isolated in the actor.
+- Service modules mostly use closure-based witness structs marked `Sendable`.
+- Polling task lifecycle is isolated in actor `PollingTaskState`.
+- `AppLifecycleHandler` is `@unchecked Sendable`, with mutable task state isolated in that actor.
 - Polling retries use async sleep (`Task.sleep`) with configurable delay.
 
 ## Configuration
@@ -192,12 +198,20 @@ Optional environment variables:
 
 - `ANTHROPIC_MODEL` (`opus` | `sonnet` | `haiku`, default: `sonnet`)
 - `ANTHROPIC_MAX_TOKENS` (default: `1024`, must be `> 0`)
-- `WEB_SEARCH_API_KEY` (enables `web_search` tool execution via Brave Search API)
+- `WEB_SEARCH_API_KEY` (enables live `web_search` execution via Brave Search API)
 
-`SOUL.md` is treated as required runtime prompt content; missing file is auto-created with default prompt content at startup.
+Required file:
+
+- `SOUL.md` in the working directory
+  - must exist
+  - must be non-empty (after trimming whitespace)
+  - startup fails if missing/empty/unreadable
 
 ## Error Handling
 
+- Startup/configuration:
+  - missing required env values fail fast (`fatalError`)
+  - missing/empty/unreadable `SOUL.md` throws `SystemPromptLoaderError` during configure
 - Polling:
   - polling request failures are logged and retried
   - cursor persistence failures are logged and polling continues
@@ -205,6 +219,7 @@ Optional environment variables:
   - per-update processing failures are logged
   - update is still acknowledged by cursor advancement
 - Anthropic tool-use:
+  - unsupported tools or invalid tool input shape are treated as tool execution errors
   - tool execution failures are returned to Anthropic as `tool_result` with `isError: true`
   - generation continues within the tool loop unless max rounds are exceeded
 - Package-typed errors include:
@@ -213,11 +228,13 @@ Optional environment variables:
   - `SessionStoreError`
   - `ToolExecutorError`
   - `SearchToolError`
+  - `SystemPromptLoaderError` (root app)
 
 ## Testing Coverage
 
 - Root app:
   - unknown route returns 404
+  - `SystemPromptLoader` happy path + missing/empty file failures
 - `TelegramClient`:
   - request encoding, response decoding, API error mapping
 - `SessionStore`:
@@ -225,20 +242,26 @@ Optional environment variables:
 - `TelegramBotService`:
   - happy path, history inclusion, Anthropic failure, Telegram send failure
 - `AppLifecycleHandler`:
-  - resume from cursor, cursor persistence, shutdown flush, failure continuation, allowlist filtering
+  - allowlist parsing/filtering
+  - resume from cursor and cursor persistence
+  - processing failure continuation
+  - shutdown flush behavior
 - `AnthropicClient`:
-  - request construction, response text handling, tool-call round-trips, system prompt file behavior
+  - request construction
+  - response text handling
+  - tool-call round-trips
+  - support for every advertised tool
 - `ToolExecutor`:
   - run/read/write behavior and error mapping
   - `web_search` configured/unconfigured paths, error wrapping, and JSON serialization behavior
 - `SearchTool`:
-  - request building, result decoding, and non-2xx error mapping
+  - request building, result decoding, non-HTTP response handling, and non-2xx mapping
 
 ## Constraints and Known Gaps
 
 - Polling-only bot operation (no webhook mode).
 - No application HTTP routes beyond default 404.
 - Prompt format is plain role-prefixed text, not structured conversation objects.
-- Tool execution currently has no sandboxing or explicit command allowlist.
-- `web_search` is advertised to Anthropic even when `WEB_SEARCH_API_KEY` is unset, in which case calls fail at runtime with a tool error.
-- Repository still contains `TelegramPollingLifecycleHandler/` directory and `Application+TelegramPollingTask.swift`, which are not part of current runtime wiring.
+- Tool execution has no sandboxing or explicit command allowlist.
+- `web_search` is advertised to Anthropic even when `WEB_SEARCH_API_KEY` is unset; calls then fail at runtime with tool error text.
+- Repository still contains legacy `TelegramPollingLifecycleHandler/` and `Sources/claudio/Keys/Application+TelegramPollingTask.swift`, which are not part of current runtime wiring.

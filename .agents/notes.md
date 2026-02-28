@@ -42,7 +42,7 @@
 [1] `TelegramBotService` should stay transport/orchestration-focused; inject tool definitions and tool-call handlers from app wiring instead of coupling the service package directly to `ToolExecutor`.
 [0] Dependency docs should reflect actual manifests: root external packages include Vapor and swift-nio, while SwiftAnthropic is consumed via the local AnthropicClient package.
 [0] When tool definitions are compile-time known (`ToolExecutor.tools`), keep catalog + execution loop inside `AnthropicClient.respond`; callers should pass only the prompt.
-[1] After adding new source files to a local path dependency, other package builds in this workspace can keep stale SwiftPM source lists; run `swift package clean` (or clean the dependent package) to refresh included sources.
+[2] After adding new source files to a local path dependency, other package builds in this workspace can keep stale SwiftPM source lists; run `swift package clean` (or clean the dependent package) to refresh included sources.
 [0] In AnthropicClient tool execution flow, prefer native throwing tool handlers that return output text; map success/error to `.toolResult(..., isError: ...)` at the call site instead of using a result wrapper struct.
 [0] For Telegram polling in this repo, enforce `chat.id` allowlisting before dispatching to `handleIncomingText` when model tool execution is enabled, so unauthorized chats are dropped early.
 [2] Keep Telegram chat-ID allowlist parsing in the `AppLifecycleHandler` package, and pass only the raw env value from app config (which owns missing-env fatal messaging); avoid adding extra convenience initializers for this wiring.
@@ -59,3 +59,4 @@
 [0] Docker image staging here does not include `.env`; when running via `docker compose`, explicitly pass runtime env vars (including `WEB_SEARCH_API_KEY`) or web search will be disabled.
 [0] `AnthropicClient.live` now receives `systemPrompt` as an injected value; prompt file loading/validation belongs in app-layer `SystemPromptLoader` wiring (`configure.swift`), not in the client package API.
 [0] Tool catalog definitions live in `ToolExecutor/Sources/ToolExecutor/Tool/AvailableTools.swift` (not under `AnthropicClient`); check this path first when reviewing tool metadata changes.
+[0] Anthropic tool dispatch now hard-validates required tool inputs as strings (`requiredStringInput`) before execution; malformed tool calls should be reflected back via `tool_result` errors, not by crashing the loop.

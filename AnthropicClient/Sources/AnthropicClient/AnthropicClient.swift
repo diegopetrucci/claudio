@@ -4,30 +4,24 @@ import ToolExecutor
 
 public struct AnthropicClient: Sendable {
     public var respond: @Sendable (OutgoingMessage) async throws -> IncomingMessage
-    public var ensureSystemPromptFileExists: @Sendable (String) throws -> Void
     
     public init(
-        respond: @Sendable @escaping (OutgoingMessage) async throws -> IncomingMessage,
-        ensureSystemPromptFileExists: @Sendable @escaping (String) throws -> Void = { _ in }
+        respond: @Sendable @escaping (OutgoingMessage) async throws -> IncomingMessage
     ) {
         self.respond = respond
-        self.ensureSystemPromptFileExists = ensureSystemPromptFileExists
     }
 }
 
 extension AnthropicClient {
-    static let defaultSystemPrompt = soul
-
     public static func live(
         apiKey: String,
         model: AnthropicModel,
         maxTokens: Int,
+        systemPrompt: String,
         toolExecutor: ToolExecutor = .live(),
         runCommandTimeout: TimeInterval = 30,
-        loadSystemPrompt: (@Sendable () throws -> String)? = nil,
         createMessageOverride: (@Sendable (MessageParameter) async throws -> MessageResponse)? = nil
     ) -> Self {
-        let systemPrompt = resolvedSystemPrompt(loadSystemPrompt: loadSystemPrompt)
         let createMessage = resolvedCreateMessage(
             apiKey: apiKey,
             createMessageOverride: createMessageOverride
@@ -50,61 +44,10 @@ extension AnthropicClient {
                         )
                     }
                 )
-            },
-            ensureSystemPromptFileExists: { filePath in
-                try writeDefaultSystemPromptIfMissing(
-                    filePath: filePath,
-                    defaultSystemPrompt: Self.defaultSystemPrompt
-                )
             }
         )
     }
 
-}
-
-private func resolvedSystemPrompt(
-    loadSystemPrompt: (@Sendable () throws -> String)?
-) -> String {
-    let loadSystemPrompt = loadSystemPrompt ?? {
-        let filePath = "SOUL.md"
-        do {
-            let prompt = try String(contentsOfFile: filePath, encoding: .utf8)
-            guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            else { throw AnthropicClientError.emptySystemPromptFile(path: filePath) }
-            return prompt
-        } catch {
-            if let anthropicError = error as? AnthropicClientError {
-                throw anthropicError
-            }
-            throw AnthropicClientError.unableToReadSystemPromptFile(path: filePath, underlyingError: error)
-        }
-    }
-    guard let systemPrompt = try? loadSystemPrompt()
-    else { fatalError("Failed to load system prompt. Ensure the system prompt file exists and is readable.") }
-    return systemPrompt
-}
-
-private func writeDefaultSystemPromptIfMissing(
-    filePath: String,
-    defaultSystemPrompt: String
-) throws {
-    guard !FileManager.default.fileExists(atPath: filePath)
-    else { return }
-
-    let fileURL = URL(fileURLWithPath: filePath)
-    do {
-        try FileManager.default.createDirectory(
-            at: fileURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try defaultSystemPrompt.write(
-            to: fileURL,
-            atomically: true,
-            encoding: .utf8
-        )
-    } catch {
-        throw AnthropicClientError.unableToWriteSystemPromptFile(path: filePath, underlyingError: error)
-    }
 }
 
 private func resolvedCreateMessage(

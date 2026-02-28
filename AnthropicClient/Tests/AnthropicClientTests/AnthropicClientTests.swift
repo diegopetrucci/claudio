@@ -12,9 +12,7 @@ struct AnthropicClientTests {
             apiKey: "test-key",
             model: .sonnet,
             maxTokens: 256,
-            loadSystemPrompt: {
-                "You are concise."
-            },
+            systemPrompt: "You are concise.",
             createMessageOverride: { parameter in
                 await recorder.record(Self.captureRequest(from: parameter))
                 return try Self.decodeMessageResponse(
@@ -52,9 +50,7 @@ struct AnthropicClientTests {
             apiKey: "test-key",
             model: .sonnet,
             maxTokens: 256,
-            loadSystemPrompt: {
-                "You are concise."
-            },
+            systemPrompt: "You are concise.",
             createMessageOverride: { _ in
                 try Self.decodeMessageResponse(
                     #"""
@@ -86,9 +82,7 @@ struct AnthropicClientTests {
             apiKey: "test-key",
             model: .sonnet,
             maxTokens: 256,
-            loadSystemPrompt: {
-                "You are concise."
-            },
+            systemPrompt: "You are concise.",
             createMessageOverride: { _ in
                 try Self.decodeMessageResponse(
                     #"""
@@ -163,9 +157,7 @@ struct AnthropicClientTests {
             apiKey: "test-key",
             model: .sonnet,
             maxTokens: 256,
-            loadSystemPrompt: {
-                "You are concise."
-            },
+            systemPrompt: "You are concise.",
             createMessageOverride: { parameter in
                 await payloadRecorder.record(Self.encodeMessageParameter(parameter))
                 return try Self.decodeMessageResponse(try await responses.next())
@@ -194,51 +186,6 @@ struct AnthropicClientTests {
         let incomingMessage = try await client.respond(.init(text: "hello"))
 
         #expect(incomingMessage.text == "reply for hello")
-    }
-
-    @Test("ensureSystemPromptFileExists writes default content when missing")
-    func ensureSystemPromptFileExistsWritesDefaultContentWhenMissing() throws {
-        let tempDirectoryURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDirectoryURL, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDirectoryURL) }
-
-        let promptFileURL = tempDirectoryURL.appendingPathComponent("SOUL.md")
-        let client = AnthropicClient.live(
-            apiKey: "test-key",
-            model: .sonnet,
-            maxTokens: 256,
-            loadSystemPrompt: {
-                "You are concise."
-            }
-        )
-        try client.ensureSystemPromptFileExists(promptFileURL.path)
-
-        let prompt = try String(contentsOf: promptFileURL, encoding: .utf8)
-        #expect(prompt == AnthropicClient.defaultSystemPrompt)
-    }
-
-    @Test("ensureSystemPromptFileExists does not overwrite existing file")
-    func ensureSystemPromptFileExistsDoesNotOverwriteExistingFile() throws {
-        let tempDirectoryURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDirectoryURL, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDirectoryURL) }
-
-        let promptFileURL = tempDirectoryURL.appendingPathComponent("SOUL.md")
-        try "Custom prompt".write(to: promptFileURL, atomically: true, encoding: .utf8)
-        let client = AnthropicClient.live(
-            apiKey: "test-key",
-            model: .sonnet,
-            maxTokens: 256,
-            loadSystemPrompt: {
-                "You are concise."
-            }
-        )
-        try client.ensureSystemPromptFileExists(promptFileURL.path)
-
-        let prompt = try String(contentsOf: promptFileURL, encoding: .utf8)
-        #expect(prompt == "Custom prompt")
     }
 
     private static func decodeMessageResponse(_ json: String) throws -> MessageResponse {

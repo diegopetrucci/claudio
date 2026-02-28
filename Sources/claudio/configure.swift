@@ -68,14 +68,15 @@ private func anthropicClient(
     guard anthropicMaxTokens > 0
     else { fatalError("ANTHROPIC_MAX_TOKENS must be greater than zero.") }
 
-    let anthropicClient = AnthropicClient.live(
+    let systemPrompt = try SystemPromptLoader().load()
+
+    return AnthropicClient.live(
         apiKey: anthropicAPIKey,
         model: anthropicModel,
         maxTokens: anthropicMaxTokens,
+        systemPrompt: systemPrompt,
         toolExecutor: toolExecutor(app)
     )
-    try anthropicClient.ensureSystemPromptFileExists("SOUL.md")
-    return anthropicClient
 }
 
 private func toolExecutor(_ app: Application) -> ToolExecutor {

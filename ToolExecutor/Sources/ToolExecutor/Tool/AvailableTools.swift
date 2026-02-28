@@ -1,22 +1,13 @@
-public enum AvailableTools: CaseIterable, Sendable {
-    case runCommand
-    case readFile
-    case writeFile
-    case webSearch
+public enum AvailableTools: String, CaseIterable, Sendable {
+    case runCommand = "run_command"
+    case readFile = "read_file"
+    case writeFile = "write_file"
+    case webSearch = "web_search"
 }
 
 extension AvailableTools {
     public var name: String {
-        switch self {
-        case .readFile:
-            return "read_file"
-        case .writeFile:
-            return "write_file"
-        case .runCommand:
-            return "run_command"
-        case .webSearch:
-            return "web_search"
-        }
+        self.rawValue
     }
 
     public var description: String {

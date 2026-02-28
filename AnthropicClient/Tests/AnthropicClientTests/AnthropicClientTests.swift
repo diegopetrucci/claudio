@@ -2,6 +2,7 @@
 import Foundation
 import SwiftAnthropic
 import Testing
+import ToolExecutor
 
 @Suite("AnthropicClient Tests")
 struct AnthropicClientTests {
@@ -175,6 +176,67 @@ struct AnthropicClientTests {
         #expect(payloads[1].contains("\"content\":\"hello\""))
     }
 
+    @Test("respond supports every advertised tool")
+    func respondSupportsEveryAdvertisedTool() async throws {
+        let toolExecutor = ToolExecutor(
+            runCommand: { command, _ in
+                "ran \(command)"
+            },
+            readFile: { path in
+                "read \(path)"
+            },
+            writeFile: { _, _ in },
+            webSearch: { query in
+                "searched \(query)"
+            }
+        )
+
+        for tool in tools {
+            let payloadRecorder = AnthropicPayloadRecorder()
+            let responses = MessageResponseSequence(
+                responses: [
+                    try Self.toolUseResponseJSON(
+                        toolName: tool.name,
+                        requiredInputKeys: tool.schema.required
+                    ),
+                    #"""
+                        {
+                          "id":"msg_2",
+                          "type":"message",
+                          "model":"claude-3-7-sonnet-latest",
+                          "role":"assistant",
+                          "content":[{"type":"text","text":"ok"}],
+                          "stop_reason":"end_turn",
+                          "stop_sequence":null,
+                          "usage":{"input_tokens":20,"output_tokens":6}
+                        }
+                        """#,
+                ]
+            )
+
+            let client = AnthropicClient.live(
+                apiKey: "test-key",
+                model: .sonnet,
+                maxTokens: 256,
+                systemPrompt: "You are concise.",
+                toolExecutor: toolExecutor,
+                createMessageOverride: { parameter in
+                    await payloadRecorder.record(Self.encodeMessageParameter(parameter))
+                    return try Self.decodeMessageResponse(try await responses.next())
+                }
+            )
+
+            let incomingMessage = try await client.respond(.init(text: "hello"))
+            #expect(incomingMessage.text == "ok")
+
+            let payloads = await payloadRecorder.all()
+            #expect(payloads.count == 2)
+            #expect(payloads[1].contains("\"tool_result\""))
+            #expect(payloads[1].contains("\"is_error\":false"))
+            #expect(!payloads[1].contains("Tool execution failed:"))
+        }
+    }
+
     @Test("respond uses injected witness implementation")
     func respondUsesInjectedWitnessImplementation() async throws {
         let client = AnthropicClient(
@@ -193,6 +255,43 @@ struct AnthropicClientTests {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return try decoder.decode(MessageResponse.self, from: data)
+    }
+
+    private static func toolUseResponseJSON(
+        toolName: String,
+        requiredInputKeys: [String]
+    ) throws -> String {
+        let input = Dictionary(
+            uniqueKeysWithValues: requiredInputKeys.map { key in
+                (key, "value_for_\(key)")
+            }
+        )
+        let json: [String: Any] = [
+            "id": "msg_1",
+            "type": "message",
+            "model": "claude-3-7-sonnet-latest",
+            "role": "assistant",
+            "content": [
+                [
+                    "type": "tool_use",
+                    "id": "toolu_1",
+                    "name": toolName,
+                    "input": input,
+                ],
+            ],
+            "stop_reason": "tool_use",
+            "stop_sequence": NSNull(),
+            "usage": [
+                "input_tokens": 10,
+                "output_tokens": 4,
+            ],
+        ]
+
+        let data = try JSONSerialization.data(
+            withJSONObject: json,
+            options: [.sortedKeys]
+        )
+        return String(decoding: data, as: UTF8.self)
     }
 
     private static func encodeMessageParameter(_ parameter: MessageParameter) -> String {

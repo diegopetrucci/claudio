@@ -58,3 +58,4 @@
 [0] In Anthropic tool-result error text, non-localized Swift enums surface as opaque NSError strings like `ToolExecutor.ToolExecutorError error 5`; make tool-facing errors conform to `LocalizedError` with actionable messages.
 [0] Docker image staging here does not include `.env`; when running via `docker compose`, explicitly pass runtime env vars (including `WEB_SEARCH_API_KEY`) or web search will be disabled.
 [0] `AnthropicClient.live` now receives `systemPrompt` as an injected value; prompt file loading/validation belongs in app-layer `SystemPromptLoader` wiring (`configure.swift`), not in the client package API.
+[0] Tool catalog definitions live in `ToolExecutor/Sources/ToolExecutor/Tool/AvailableTools.swift` (not under `AnthropicClient`); check this path first when reviewing tool metadata changes.

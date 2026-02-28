@@ -72,23 +72,24 @@ private func executeToolUse(
     toolExecutor: ToolExecutor,
     runCommandTimeout: TimeInterval
 ) async throws -> String {
-    switch toolUse.name {
-    case AvailableTools.runCommand.name:
+    guard let tool = AvailableTools(rawValue: toolUse.name)
+    else { throw ToolExecutionInputError.unsupportedTool(name: toolUse.name) }
+
+    switch tool {
+    case .runCommand:
         let command = try requiredStringInput("command", in: toolUse.input)
         return try toolExecutor.runCommand(command, runCommandTimeout)
-    case AvailableTools.readFile.name:
+    case .readFile:
         let path = try requiredStringInput("path", in: toolUse.input)
         return try toolExecutor.readFile(path)
-    case AvailableTools.writeFile.name:
+    case .writeFile:
         let path = try requiredStringInput("path", in: toolUse.input)
         let content = try requiredStringInput("content", in: toolUse.input)
         try toolExecutor.writeFile(path, content)
         return "Wrote file at path: \(path)"
-    case AvailableTools.webSearch.name:
+    case .webSearch:
         let query = try requiredStringInput("query", in: toolUse.input)
         return try await toolExecutor.webSearch(query)
-    default:
-        throw ToolExecutionInputError.unsupportedTool(name: toolUse.name)
     }
 }
 

@@ -35,9 +35,8 @@ extension TelegramClient {
                     )
                 }
 
-                guard let message = apiResponse.result else {
-                    throw TelegramClientError.missingResult
-                }
+                guard let message = apiResponse.result
+                else { throw TelegramClientError.missingResult }
 
                 return message
             },
@@ -67,4 +66,3 @@ extension TelegramClient {
         )
     }
 }
-

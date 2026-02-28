@@ -8,9 +8,8 @@ extension Application {
 
     var sessionStore: SessionStore {
         get {
-            guard let store = self.storage[SessionStoreKey.self] else {
-                fatalError("SessionStore not configured. Set app.sessionStore in configure(_:).")
-            }
+            guard let store = self.storage[SessionStoreKey.self]
+            else { fatalError("SessionStore not configured. Set app.sessionStore in configure(_:).") }
             return store
         }
         set {

@@ -43,7 +43,7 @@ extension AnthropicClient {
                     maxToolRounds: 6,
                     createMessage: createMessage,
                     executeToolUse: { toolUse in
-                        try executeToolUse(
+                        try await executeToolUse(
                             toolUse,
                             toolExecutor: toolExecutor,
                             runCommandTimeout: runCommandTimeout
@@ -70,9 +70,7 @@ private func resolvedSystemPrompt(
         do {
             let prompt = try String(contentsOfFile: filePath, encoding: .utf8)
             guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            else {
-                throw AnthropicClientError.emptySystemPromptFile(path: filePath)
-            }
+            else { throw AnthropicClientError.emptySystemPromptFile(path: filePath) }
             return prompt
         } catch {
             if let anthropicError = error as? AnthropicClientError {
@@ -130,7 +128,7 @@ private func executeToolUse(
     _ toolUse: MessageResponse.Content.ToolUse,
     toolExecutor: ToolExecutor,
     runCommandTimeout: TimeInterval
-) throws -> String {
+) async throws -> String {
     switch toolUse.name {
     case AvailableTools.runCommand.name:
         let command = try requiredStringInput("command", in: toolUse.input)
@@ -145,7 +143,7 @@ private func executeToolUse(
         return "Wrote file at path: \(path)"
     case AvailableTools.webSearch.name:
         let query = try requiredStringInput("query", in: toolUse.input)
-        return try toolExecutor.webSearch(query)
+        return try await toolExecutor.webSearch(query)
     default:
         throw ToolExecutionInputError.unsupportedTool(name: toolUse.name)
     }
@@ -204,7 +202,7 @@ private func respondToOutgoingMessage(
     systemPrompt: String,
     maxToolRounds: Int,
     createMessage: @Sendable (MessageParameter) async throws -> MessageResponse,
-    executeToolUse: @Sendable (MessageResponse.Content.ToolUse) throws -> String
+    executeToolUse: @Sendable (MessageResponse.Content.ToolUse) async throws -> String
 ) async throws -> IncomingMessage {
     var messages: [MessageParameter.Message] = [
         .init(role: .user, content: .text(outgoingMessage.text)),
@@ -267,7 +265,7 @@ private func respondToOutgoingMessage(
         toolResults.reserveCapacity(toolUses.count)
         for toolUse in toolUses {
             do {
-                let output = try executeToolUse(toolUse)
+                let output = try await executeToolUse(toolUse)
                 toolResults.append(
                     .toolResult(
                         toolUse.id,

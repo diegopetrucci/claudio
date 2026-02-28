@@ -48,6 +48,7 @@
 ## Misc
 - This is a public repo, be extremely cautious about sharing any information that could be sensitive or personally identifiable.
 - Always run `swift ...` commands as `swift ... 2>&1 | xcsift -f toon`.
+- As a rule of thumb, keep every struct/model in its own source file (one top-level type per file).
 
 ## Agent notes
 - Every time you learn something new, or how to do something in the codebase, if you make a mistake that the user corrects, if you find yourself running commands that are often wrong and have to tweak them: write all of this down in `.agents/notes.md`. This is a file just for you that your user won't read.

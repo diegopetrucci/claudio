@@ -29,6 +29,17 @@ Where `<token>` is your bot token from BotFather. Then copy `message.chat.id` fr
 ALLOWED_TELEGRAM_CHAT_IDS=<chat_id>
 ```
 
+### Optional web search
+
+To enable the `web_search` tool, set your Brave Search API key:
+
+```bash
+WEB_SEARCH_API_KEY=<your-web-search-api-key>
+```
+
+`web_search` currently uses a fixed result limit in code (`5`).
+If `WEB_SEARCH_API_KEY` is unset, `web_search` remains available but returns a configuration error when called.
+
 ## Development
 
 1. Build with `swift build`, or using Xcode

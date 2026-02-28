@@ -13,14 +13,21 @@ let package = Package(
             targets: ["ToolExecutor"]
         ),
     ],
+    dependencies: [
+        .package(path: "../SearchTool"),
+    ],
     targets: [
         .target(
-            name: "ToolExecutor"
+            name: "ToolExecutor",
+            dependencies: [
+                "SearchTool",
+            ]
         ),
         .testTarget(
             name: "ToolExecutorTests",
             dependencies: [
                 .target(name: "ToolExecutor"),
+                "SearchTool",
             ]
         ),
     ]

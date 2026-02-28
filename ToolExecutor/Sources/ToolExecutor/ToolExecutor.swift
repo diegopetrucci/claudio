@@ -1,16 +1,17 @@
 import Foundation
+import SearchTool
 
 public struct ToolExecutor: Sendable {
     public var runCommand: @Sendable (String, TimeInterval) throws -> String
     public var readFile: @Sendable (String) throws -> String
     public var writeFile: @Sendable (String, String) throws -> Void
-    public var webSearch: @Sendable (String) throws -> String
+    public var webSearch: @Sendable (String) async throws -> String
 
     public init(
         runCommand: @escaping @Sendable (String, TimeInterval) throws -> String,
         readFile: @escaping @Sendable (String) throws -> String,
         writeFile: @escaping @Sendable (String, String) throws -> Void,
-        webSearch: @escaping @Sendable (String) throws -> String
+        webSearch: @escaping @Sendable (String) async throws -> String
     ) {
         self.runCommand = runCommand
         self.readFile = readFile
@@ -19,10 +20,16 @@ public struct ToolExecutor: Sendable {
     }
 }
 
-// TODO: add mocks and remove init
-
 extension ToolExecutor {
-    public static func live() -> Self {
+    public static func live(
+        searchTool: SearchTool? = nil,
+        webSearchMaxResults: Int = 5,
+        jsonEncoder: JSONEncoder = {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            return encoder
+        }()
+    ) -> Self {
         .init(
             runCommand: { command, timeout in
                 let process = Process()
@@ -118,9 +125,37 @@ extension ToolExecutor {
                 }
             },
             webSearch: { query in
-                // TODO: implement web search tool
-                throw ToolExecutorError.webSearchNotImplemented(query: query)
+                guard let searchTool
+                else { throw ToolExecutorError.webSearchNotConfigured }
+
+                let results: [SearchResult]
+                do {
+                    results = try await searchTool.search(query, webSearchMaxResults)
+                } catch {
+                    throw ToolExecutorError.webSearchRequestFailed(
+                        query: query,
+                        description: String(describing: error)
+                    )
+                }
+
+                let output = WebSearchOutput(
+                    query: query,
+                    results: results
+                )
+                do {
+                    let data = try jsonEncoder.encode(output)
+                    return String(decoding: data, as: UTF8.self)
+                } catch {
+                    throw ToolExecutorError.webSearchSerializationFailed(
+                        description: error.localizedDescription
+                    )
+                }
             }
         )
     }
+}
+
+private struct WebSearchOutput: Encodable {
+    let query: String
+    let results: [SearchResult]
 }

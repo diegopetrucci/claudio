@@ -5,6 +5,8 @@ import SessionStore
 import TelegramClient
 import TelegramBotService
 import AppLifecycleHandler
+import ToolExecutor
+import SearchTool
 
 // configures your application
 public func configure(_ app: Application) async throws {
@@ -37,9 +39,8 @@ private func sessionStore(
 private func telegramClient(
     _ app: Application,
 ) -> TelegramClient {
-    guard let botToken = Environment.get("TELEGRAM_BOT_TOKEN"), !botToken.isEmpty else {
-        fatalError("Missing TELEGRAM_BOT_TOKEN. Configure it in the environment before starting the app.")
-    }
+    guard let botToken = Environment.get("TELEGRAM_BOT_TOKEN"), !botToken.isEmpty
+    else { fatalError("Missing TELEGRAM_BOT_TOKEN. Configure it in the environment before starting the app.") }
     
     return .live(client: app.client, botToken: botToken)
 }
@@ -50,16 +51,12 @@ private func anthropicClient(
     guard
         let anthropicAPIKey = Environment.get("ANTHROPIC_API_KEY"),
         !anthropicAPIKey.isEmpty
-    else {
-        fatalError("Missing ANTHROPIC_API_KEY. Configure it in the environment before starting the app.")
-    }
+    else { fatalError("Missing ANTHROPIC_API_KEY. Configure it in the environment before starting the app.") }
     
     let anthropicModel: AnthropicModel
     if let modelValue = Environment.get("ANTHROPIC_MODEL"), !modelValue.isEmpty {
         guard let parsedModel = AnthropicModel(environmentValue: modelValue)
-        else {
-            fatalError("Invalid ANTHROPIC_MODEL '\(modelValue)'. Expected one of: opus, sonnet, haiku.")
-        }
+        else { fatalError("Invalid ANTHROPIC_MODEL '\(modelValue)'. Expected one of: opus, sonnet, haiku.") }
         anthropicModel = parsedModel
     } else {
         anthropicModel = .sonnet
@@ -68,17 +65,33 @@ private func anthropicClient(
     let anthropicMaxTokens = Environment.get("ANTHROPIC_MAX_TOKENS")
         .flatMap(Int.init)
     ?? 1024
-    guard anthropicMaxTokens > 0 else {
-        fatalError("ANTHROPIC_MAX_TOKENS must be greater than zero.")
-    }
+    guard anthropicMaxTokens > 0
+    else { fatalError("ANTHROPIC_MAX_TOKENS must be greater than zero.") }
 
     let anthropicClient = AnthropicClient.live(
         apiKey: anthropicAPIKey,
         model: anthropicModel,
-        maxTokens: anthropicMaxTokens
+        maxTokens: anthropicMaxTokens,
+        toolExecutor: toolExecutor(app)
     )
     try anthropicClient.ensureSystemPromptFileExists("SOUL.md")
     return anthropicClient
+}
+
+private func toolExecutor(_ app: Application) -> ToolExecutor {
+    let webSearchAPIKey = Environment.get("WEB_SEARCH_API_KEY")?
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let webSearchAPIKey, !webSearchAPIKey.isEmpty else {
+        app.logger.warning("web_search disabled: WEB_SEARCH_API_KEY is missing or empty.")
+        return .live()
+    }
+
+    app.logger.info("web_search enabled.")
+
+    return .live(
+        searchTool: .live(apiKey: webSearchAPIKey),
+        webSearchMaxResults: 5
+    )
 }
 
 private func telegramBotService(

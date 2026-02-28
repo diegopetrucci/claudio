@@ -1,4 +1,5 @@
 import Foundation
+import SearchTool
 import Testing
 @testable import ToolExecutor
 
@@ -137,17 +138,94 @@ struct ToolExecutorTests {
         }
     }
 
-    @Test("web_search throws not implemented")
-    func webSearchThrowsNotImplemented() throws {
+    @Test("web_search throws when not configured")
+    func webSearchThrowsWhenNotConfigured() async throws {
         let executor = ToolExecutor.live()
 
         do {
             let query = "swift process"
-            _ = try executor.webSearch(query)
-            Issue.record("Expected webSearchNotImplemented error, but call succeeded.")
+            _ = try await executor.webSearch(query)
+            Issue.record("Expected webSearchNotConfigured error, but call succeeded.")
         } catch let error as ToolExecutorError {
-            #expect(error == .webSearchNotImplemented(query: "swift process"))
+            #expect(error == .webSearchNotConfigured)
+            #expect(error.localizedDescription.contains("WEB_SEARCH_API_KEY"))
         }
+    }
+
+    @Test("web_search returns encoded search results")
+    func webSearchReturnsEncodedSearchResults() async throws {
+        let executor = ToolExecutor.live(
+            searchTool: .init(
+                search: { query, maxResults in
+                    #expect(query == "swift process")
+                    #expect(maxResults == 3)
+                    return [
+                        .init(
+                            title: "Swift Process",
+                            url: "https://example.com/swift-process",
+                            snippet: "How Process works in Swift",
+                            pageAge: "2026-01-01T00:00:00Z"
+                        ),
+                    ]
+                }
+            ),
+            webSearchMaxResults: 3
+        )
+
+        let output = try await executor.webSearch("swift process")
+        #expect(output.contains("\"query\" : \"swift process\""))
+        #expect(output.contains("\"title\" : \"Swift Process\""))
+        #expect(output.contains("\"url\" : \"https:\\/\\/example.com\\/swift-process\""))
+        #expect(output.contains("\"snippet\" : \"How Process works in Swift\""))
+    }
+
+    @Test("web_search wraps search failures")
+    func webSearchWrapsSearchFailures() async throws {
+        let executor = ToolExecutor.live(
+            searchTool: .init(
+                search: { _, _ in
+                    throw SearchToolError.invalidResponse(description: "bad payload")
+                }
+            )
+        )
+
+        do {
+            _ = try await executor.webSearch("swift process")
+            Issue.record("Expected webSearchRequestFailed error, but call succeeded.")
+        } catch let error as ToolExecutorError {
+            switch error {
+            case let .webSearchRequestFailed(query, description):
+                #expect(query == "swift process")
+                #expect(description.contains("bad payload"))
+            default:
+                Issue.record("Expected webSearchRequestFailed error, but got \(error).")
+            }
+        }
+    }
+
+    @Test("web_search uses injected json encoder")
+    func webSearchUsesInjectedJSONEncoder() async throws {
+        let jsonEncoder = JSONEncoder()
+        jsonEncoder.outputFormatting = [.withoutEscapingSlashes, .sortedKeys]
+
+        let executor = ToolExecutor.live(
+            searchTool: .init(
+                search: { _, _ in
+                    return [
+                        .init(
+                            title: "Swift Process",
+                            url: "https://example.com/swift-process",
+                            snippet: "How Process works in Swift",
+                            pageAge: nil
+                        ),
+                    ]
+                }
+            ),
+            jsonEncoder: jsonEncoder
+        )
+
+        let output = try await executor.webSearch("swift process")
+        #expect(output.contains("\"url\":\"https://example.com/swift-process\""))
     }
 }
 

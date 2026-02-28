@@ -8,9 +8,8 @@ extension Application {
 
     var telegramClient: TelegramClient {
         get {
-            guard let client = self.storage[TelegramClientKey.self] else {
-                fatalError("TelegramClient not configured. Set app.telegramClient in configure(_:).")
-            }
+            guard let client = self.storage[TelegramClientKey.self]
+            else { fatalError("TelegramClient not configured. Set app.telegramClient in configure(_:).") }
             return client
         }
         set {
@@ -18,4 +17,3 @@ extension Application {
         }
     }
 }
-

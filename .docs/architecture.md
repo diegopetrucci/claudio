@@ -2,15 +2,16 @@
 
 ## Overview
 
-`claudio` is a Vapor-based Telegram bot service that:
+`claudio` is a Vapor-based Telegram bot that:
 
-1. Polls Telegram for new text messages.
-2. Builds a prompt from per-chat conversation history.
-3. Generates a response via Anthropic.
-4. Sends the response back to Telegram.
-5. Persists both message history and polling cursor to disk.
+1. Long-polls Telegram for new updates.
+2. Filters incoming messages by an allowlist of Telegram `chat.id` values.
+3. Builds a text prompt from persisted per-chat history.
+4. Calls Anthropic and supports tool-use rounds.
+5. Sends the final response back to Telegram.
+6. Persists both chat history and the polling cursor on disk.
 
-The root app is intentionally thin: it wires configuration and lifecycle, while behavior lives in local packages.
+The executable target is intentionally thin: startup/configuration and lifecycle wiring happen in `Sources/claudio`, while behavior is implemented in local packages.
 
 ## Module Boundaries
 
@@ -19,65 +20,97 @@ The root app is intentionally thin: it wires configuration and lifecycle, while 
 - Files: `Sources/claudio/*`
 - Responsibilities:
   - Startup/shutdown (`entrypoint.swift`)
-  - Environment and dependency wiring (`configure.swift`)
-  - Register lifecycle handler
-  - Expose dependency instances via `Application.storage` keys
-  - HTTP routes (currently empty, `routes.swift`)
+  - Environment loading and dependency wiring (`configure.swift`)
+  - Store dependencies in `Application.storage` keys
+  - Register `AppLifecycleHandler` as the runtime loop
+  - HTTP routes (currently empty)
 
-### `TelegramClient` package
+### `AppLifecycleHandler`
 
-- Files: `TelegramClient/Sources/TelegramClient/*`
+- Files: `AppLifecycleHandler/Sources/AppLifecycleHandler/*`
 - Responsibilities:
-  - Telegram Bot API transport (`sendMessage`, `getUpdates`)
-  - Request/response payload modeling and error mapping
-- External dependency: Vapor `Client`
+  - Parse allowed chat IDs from `ALLOWED_TELEGRAM_CHAT_IDS`
+  - Start polling loop on app boot
+  - Resume from persisted cursor (`lastProcessedUpdateID`)
+  - Ignore non-text, bot-originated, or unauthorized chat messages
+  - Dispatch valid text messages to `TelegramBotService`
+  - Persist cursor after each processed update (including failed handling)
+  - Retry polling failures with backoff
+  - Cancel polling task and flush sessions on shutdown
 
-### `AnthropicClient` package
-
-- Files: `AnthropicClient/Sources/AnthropicClient/*`
-- Responsibilities:
-  - Anthropic API transport abstraction (`generateText`)
-  - Model/environment mapping (`AnthropicModel`)
-  - Response text extraction and validation
-- External dependency: `SwiftAnthropic`
-
-### `SessionStore` package
-
-- Files: `SessionStore/Sources/SessionStore/*`
-- Responsibilities:
-  - Persist chat transcripts as JSONL per chat
-  - Persist Telegram polling cursor
-  - Flush file handles on shutdown
-- Storage location: `./.sessions` under app working directory
-
-### `TelegramBotService` package
+### `TelegramBotService`
 
 - File: `TelegramBotService/Sources/TelegramBotService/TelegramBotService.swift`
 - Responsibilities:
-  - Orchestrate message flow between session store, Anthropic, and Telegram
-  - Build prompt from last 20 messages
-  - Append user/assistant messages to history in order
+  - Append incoming user message to session history
+  - Build prompt from last 20 session messages
+  - Call `AnthropicClient.respond`
+  - Send generated reply to Telegram
+  - Append assistant message after successful send
 
-### `AppLifecycleHandler` package
+### `AnthropicClient`
 
-- File: `AppLifecycleHandler/Sources/AppLifecycleHandler/AppLifecycleHandler.swift`
+- Files: `AnthropicClient/Sources/AnthropicClient/*`
 - Responsibilities:
-  - Start long-polling loop at app boot
-  - Resume from persisted cursor
-  - Dispatch incoming text to bot service
-  - Persist cursor after each processed update
-  - Retry on polling errors
-  - Cancel task + flush sessions on shutdown
+  - Wrap Anthropic Messages API interaction
+  - Resolve model from `AnthropicModel`
+  - Load system prompt from `SOUL.md`
+  - Ensure `SOUL.md` exists at startup (writes default prompt if missing)
+  - Execute tool-use loops (up to 6 rounds) and feed tool results back to Anthropic
+  - Return final text response
+- Depends on:
+  - `SwiftAnthropic`
+  - `ToolExecutor`
+
+### `ToolExecutor`
+
+- Files: `ToolExecutor/Sources/ToolExecutor/*`
+- Responsibilities:
+  - Execute shell commands (`run_command`) with timeout
+  - Read files (`read_file`)
+  - Write files (`write_file`)
+  - Execute web search (`web_search`) via `SearchTool` when configured
+  - Define tool catalog/schema exposed to Anthropic
+  - Surface per-tool typed errors
+- Current state:
+  - `web_search` is always advertised in the tool catalog.
+  - If `WEB_SEARCH_API_KEY` is unset, execution fails with `webSearchNotConfigured`.
+
+### `SearchTool`
+
+- Files: `SearchTool/Sources/SearchTool/*`
+- Responsibilities:
+  - Provider-agnostic search client wrapper
+  - Current live implementation targets Brave Search API
+  - Request construction, response decoding, and transport/status error mapping
+- Current state:
+  - Wired into `ToolExecutor.live(searchTool:)` when `WEB_SEARCH_API_KEY` is present.
+
+### `TelegramClient`
+
+- Files: `TelegramClient/Sources/TelegramClient/*`
+- Responsibilities:
+  - Telegram Bot API transport (`getUpdates`, `sendMessage`)
+  - Payload models and API error mapping
+
+### `SessionStore`
+
+- Files: `SessionStore/Sources/SessionStore/*`
+- Responsibilities:
+  - Persist per-chat transcript JSONL files
+  - Persist polling cursor JSON
+  - Recreate session directory on writes if removed
+  - Flush file handles on shutdown
 
 ## Dependency Graph
 
 ```mermaid
 graph TD
-    A[claudio executable] --> B[AppLifecycleHandler]
-    A --> C[TelegramBotService]
-    A --> D[TelegramClient]
-    A --> E[AnthropicClient]
-    A --> F[SessionStore]
+    A["claudio executable"] --> B["AppLifecycleHandler"]
+    A --> C["TelegramBotService"]
+    A --> D["TelegramClient"]
+    A --> E["AnthropicClient"]
+    A --> F["SessionStore"]
 
     B --> D
     B --> C
@@ -86,132 +119,126 @@ graph TD
     C --> D
     C --> E
     C --> F
+
+    E --> G["ToolExecutor"]
+    G --> H["SearchTool (enabled when WEB_SEARCH_API_KEY is set)"]
 ```
 
 ## Runtime Flow
 
-1. `Entrypoint.main` creates Vapor `Application`, calls `configure`, then `app.execute()`.
-2. `configure.swift`:
-  - Loads `.env`.
-  - Creates `SessionStore.live(baseDirectoryURL: workingDirectory)`.
-  - Creates `TelegramClient.live(client: app.client, botToken: TELEGRAM_BOT_TOKEN)`.
-  - Creates `AnthropicClient.live(...)` from env (`ANTHROPIC_*`).
-  - Creates `TelegramBotService.live(...)`.
-  - Registers `AppLifecycleHandler`.
+1. `Entrypoint.main` creates a Vapor `Application`, runs `configure(_:)`, then `app.execute()`.
+2. `configure(_:)`:
+   - loads `.env`
+   - constructs `SessionStore.live(...)`
+   - constructs `TelegramClient.live(...)` (requires `TELEGRAM_BOT_TOKEN`)
+   - constructs `ToolExecutor.live(...)`:
+     - default `ToolExecutor.live()` when `WEB_SEARCH_API_KEY` is missing
+     - injects `SearchTool.live(apiKey:)` when `WEB_SEARCH_API_KEY` is present
+   - constructs `AnthropicClient.live(...)` (requires `ANTHROPIC_API_KEY`, receives configured `ToolExecutor`)
+   - ensures `SOUL.md` exists
+   - constructs `TelegramBotService.live(...)`
+   - constructs/registers `AppLifecycleHandler` (requires `ALLOWED_TELEGRAM_CHAT_IDS`)
 3. On boot, `AppLifecycleHandler.didBootAsync`:
-  - Loads last processed update id from `SessionStore`.
-  - Starts polling loop (`getUpdates(offset, timeout)`).
+   - loads last cursor from `SessionStore`
+   - starts long-polling loop via `getUpdates(offset, timeout)`
 4. For each update:
-  - Ignore non-message, bot-sent, or empty-text updates.
-  - Call `TelegramBotService.handleIncomingText(chatID, text)`.
-  - Persist cursor (`saveLastProcessedUpdateID`) after processing.
+   - ignore updates without `message`
+   - ignore bot-authored messages
+   - ignore empty text
+   - ignore chats not in allowlist
+   - call `TelegramBotService.handleIncomingText(chatID, text)`
+   - advance/persist cursor regardless of handling success to avoid poison-message replay loops
 5. `TelegramBotService.handleIncomingText`:
-  - Append user message to session file.
-  - Load full session, keep suffix of 20 for prompt.
-  - Prompt format:
-    - `User: ...`
-    - `Assistant: ...`
-    - trailing `Assistant:`
-  - Generate text via Anthropic.
-  - Send generated text to Telegram.
-  - Append assistant message to session file.
-6. On shutdown, lifecycle handler:
-  - Cancels polling task and waits for completion.
-  - Calls `sessionStore.flush()`.
-
-## Runtime Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    participant TG as Telegram API
-    participant LC as AppLifecycleHandler
-    participant BS as TelegramBotService
-    participant SS as SessionStore
-    participant AC as AnthropicClient
-
-    LC->>SS: loadLastProcessedUpdateID()
-    loop Long polling
-        LC->>TG: getUpdates(offset, timeout=30)
-        TG-->>LC: updates[]
-        LC->>BS: handleIncomingText(chatID, text)
-        BS->>SS: appendMessage(user)
-        BS->>SS: loadSession(chatID)
-        BS->>AC: generateText(prompt)
-        AC-->>BS: assistantText
-        BS->>TG: sendMessage(chatID, assistantText)
-        BS->>SS: appendMessage(assistant)
-        LC->>SS: saveLastProcessedUpdateID(updateID)
-    end
-```
+   - append user message to session file
+   - load session and build prompt from the latest 20 messages (`User:` / `Assistant:` lines + trailing `Assistant:`)
+   - call `AnthropicClient.respond`
+   - send reply via `TelegramClient.sendMessage`
+   - append assistant reply to session file
+6. `AnthropicClient.respond`:
+   - sends message to Anthropic with system prompt and tool catalog
+   - if Anthropic requests tool use, executes tools via `ToolExecutor`, appends `tool_result` (`isError` on failures), and re-queries Anthropic
+   - repeats until final text is returned or max tool rounds is reached
+7. On shutdown, lifecycle handler cancels polling task and flushes `SessionStore`.
 
 ## Persistence Model
 
-Storage directory: `./.sessions` (relative to working directory).
+Storage root: `./.sessions` (relative to app working directory).
 
-- Per-chat transcript: `<chatID>.jsonl`
-  - One JSON object per line.
-  - Schema:
-    - `schemaVersion` (`1`)
-    - `role` (`user` | `assistant`)
-    - `text` (`String`)
-    - `timestamp` (ISO-8601)
-  - Loader is tolerant:
-    - skips malformed lines
-    - skips unknown schema versions
-
+- Transcript per chat: `<chatID>.jsonl`
+  - one JSON object per line
+  - schema fields: `schemaVersion`, `role`, `text`, `timestamp`
+  - loader skips malformed/unsupported records
 - Polling cursor: `polling_cursor.json`
-  - Schema:
-    - `schemaVersion` (`1`)
-    - `lastProcessedUpdateID` (`Int`)
+  - fields: `schemaVersion`, `lastProcessedUpdateID`
 
-Design consequence: message history and polling position survive restarts.
+This guarantees conversation and polling continuity across restarts.
 
 ## Concurrency Model
 
-- Services are closure-based witness structs (`Sendable`) for easy dependency injection/testing.
-- Polling task is managed by `AppLifecycleHandler` with an actor-backed `PollingTaskState`.
-- `AppLifecycleHandler` is marked `@unchecked Sendable`; safety is maintained by immutable captured closures plus actor isolation for mutable task state.
-- I/O is async/await; retry loop backs off via `Task.sleep`.
+- Service packages are mostly closure-based witness structs marked `Sendable`.
+- Polling task lifecycle is managed by actor `PollingTaskState`.
+- `AppLifecycleHandler` is `@unchecked Sendable`, with mutable task state isolated in the actor.
+- Polling retries use async sleep (`Task.sleep`) with configurable delay.
 
 ## Configuration
 
 Required environment variables:
 
 - `TELEGRAM_BOT_TOKEN`
+- `ALLOWED_TELEGRAM_CHAT_IDS`
 - `ANTHROPIC_API_KEY`
 
-Optional:
+Optional environment variables:
 
-- `ANTHROPIC_MODEL` (`opus`, `sonnet`, `haiku`; default: `sonnet`)
-- `ANTHROPIC_MAX_TOKENS` (default: `1024`, must be > 0)
-- `ANTHROPIC_SYSTEM_PROMPT`
+- `ANTHROPIC_MODEL` (`opus` | `sonnet` | `haiku`, default: `sonnet`)
+- `ANTHROPIC_MAX_TOKENS` (default: `1024`, must be `> 0`)
+- `WEB_SEARCH_API_KEY` (enables `web_search` tool execution via Brave Search API)
 
-Misconfiguration currently fails fast via `fatalError` during startup configuration.
+`SOUL.md` is treated as required runtime prompt content; missing file is auto-created with default prompt content at startup.
 
-## Error Handling Strategy
+## Error Handling
 
-- Polling loop:
-  - Logs polling failures, retries until shutdown.
-  - Logs cursor persistence failures but continues.
-- Per-message handling:
-  - Logs and drops failed message processing, continues polling next updates.
-- Package-level typed errors:
+- Polling:
+  - polling request failures are logged and retried
+  - cursor persistence failures are logged and polling continues
+- Message handling:
+  - per-update processing failures are logged
+  - update is still acknowledged by cursor advancement
+- Anthropic tool-use:
+  - tool execution failures are returned to Anthropic as `tool_result` with `isError: true`
+  - generation continues within the tool loop unless max rounds are exceeded
+- Package-typed errors include:
   - `TelegramClientError`
   - `AnthropicClientError`
   - `SessionStoreError`
+  - `ToolExecutorError`
+  - `SearchToolError`
 
-## Testing Coverage (Current)
+## Testing Coverage
 
-- Root app: unknown route returns 404.
-- `TelegramClient`: request encoding, response decoding, API error mapping.
-- `AnthropicClient`: request construction, text concatenation, empty-content errors.
-- `SessionStore`: append/load round-trip, malformed lines, cursor persistence, flush, directory recreation, path-with-spaces.
-- `TelegramBotService`: happy path, history inclusion, Anthropic/send failures.
-- `AppLifecycleHandler`: resume offset from cursor, cursor save after updates, flush on shutdown.
+- Root app:
+  - unknown route returns 404
+- `TelegramClient`:
+  - request encoding, response decoding, API error mapping
+- `SessionStore`:
+  - append/load round-trip, malformed line tolerance, cursor persistence, directory recreation, flush
+- `TelegramBotService`:
+  - happy path, history inclusion, Anthropic failure, Telegram send failure
+- `AppLifecycleHandler`:
+  - resume from cursor, cursor persistence, shutdown flush, failure continuation, allowlist filtering
+- `AnthropicClient`:
+  - request construction, response text handling, tool-call round-trips, system prompt file behavior
+- `ToolExecutor`:
+  - run/read/write behavior and error mapping
+  - `web_search` configured/unconfigured paths, error wrapping, and JSON serialization behavior
+- `SearchTool`:
+  - request building, result decoding, and non-2xx error mapping
 
-## Notable Constraints and Gaps
+## Constraints and Known Gaps
 
-- No webhook mode; polling only.
-- No inbound app routes beyond default 404 behavior.
-- Prompt construction is simple plaintext role-prefixing (no richer conversation schema/tool use).
-- No explicit rate limiting/backpressure around polling and downstream API calls.
+- Polling-only bot operation (no webhook mode).
+- No application HTTP routes beyond default 404.
+- Prompt format is plain role-prefixed text, not structured conversation objects.
+- Tool execution currently has no sandboxing or explicit command allowlist.
+- `web_search` is advertised to Anthropic even when `WEB_SEARCH_API_KEY` is unset, in which case calls fail at runtime with a tool error.
+- Repository still contains `TelegramPollingLifecycleHandler/` directory and `Application+TelegramPollingTask.swift`, which are not part of current runtime wiring.

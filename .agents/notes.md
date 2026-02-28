@@ -1,11 +1,11 @@
 [2] New service boundaries in this repo should use protocol-witness style structs (closure-based APIs, like TelegramClient/TelegramBotService) instead of exposing concrete actor types directly.
-[2] Keep one top-level model/object per source file (for example: SessionMessageRole.swift, SessionMessage.swift, SessionStore.swift).
+[3] Keep one top-level model/object per source file (for example: SessionMessageRole.swift, SessionMessage.swift, SessionStore.swift).
 [0] For witness-style services, avoid a second "live implementation" type; keep the live implementation directly in the witness file/extension (like TelegramClient.live).
 [0] Session persistence models/store types belong in their own package rather than under TelegramBotService.
 [0] Do not add forward-looking APIs/dependencies before they are needed (for example: no unused flush endpoint and no unused package imports).
 [2] In witness-style `live` factories, inline helper logic directly in closure fields when it is single-use; extract private helpers only when reused.
 [0] Shared JSON codec configuration for SessionStore should live in dedicated source files (e.g., JSONDecoder.swift/JSONEncoder.swift) and be reused from SessionStore.swift.
-[0] Formatting preference: for tiny `guard` else branches, place `else` on the next line with a single-line body (`else { return ... }`, `else { continue }`, `else { throw ... }`).
+[1] Formatting preference: for tiny `guard` else branches, place `else` on the next line with a single-line body (`else { return ... }`, `else { continue }`, `else { throw ... }`).
 [0] Formatting preference: for tiny `defer` bodies, use single-line form (`defer { ... }`).
 [1] In `configure.swift`, follow existing pattern of dedicated `configureX(app)` helper functions instead of inlining setup logic in `configure(_:)`.
 [0] For quit persistence, wire a `flush` closure through lifecycle shutdown and invoke it even if the polling task was never started.
@@ -49,3 +49,11 @@
 [0] Keep `allowedTelegramChatIDs(from:)` internal to the `AppLifecycleHandler` module; app wiring should pass raw env values but not expose parser utilities as public API.
 [0] In witness-style `.live(...)` factories, capture expensive setup (file reads, service creation) once outside request closures; per-request closures should only perform request-scoped work.
 [0] Telegram `getUpdates` calls in docs/examples must use `bot<token>` (BotFather token), not a bot numeric ID (for example `bot12345`), otherwise Telegram API auth fails.
+[0] For reusable search integrations, keep package and API names provider-agnostic (for example `SearchTool`), and hide the underlying provider (Brave) in implementation details.
+[0] In SwiftPM manifests here, keep `products:` before `dependencies:` in `Package(...)` initializers, or the manifest fails to compile.
+[0] Keep architecture docs explicit when tool schemas and runtime behavior diverge (for example `web_search` exposed to Anthropic while `ToolExecutor.webSearch` still throws not implemented), to avoid overstating capabilities.
+[0] For early search-tool rollout in this repo, prefer a code-level default for max results over adding extra env variables unless explicitly requested.
+[0] In SearchTool, inject a concrete `JSONDecoder` dependency in `.live(...)` instead of a decoder factory closure.
+[0] In SearchTool, inject an HTTP client/session dependency (protocol-based) in `.live(...)` instead of a request closure parameter.
+[0] In Anthropic tool-result error text, non-localized Swift enums surface as opaque NSError strings like `ToolExecutor.ToolExecutorError error 5`; make tool-facing errors conform to `LocalizedError` with actionable messages.
+[0] Docker image staging here does not include `.env`; when running via `docker compose`, explicitly pass runtime env vars (including `WEB_SEARCH_API_KEY`) or web search will be disabled.

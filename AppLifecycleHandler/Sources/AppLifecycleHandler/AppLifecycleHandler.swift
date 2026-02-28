@@ -4,6 +4,7 @@ import TelegramClient
 public final class AppLifecycleHandler: @unchecked Sendable {
     let getUpdates: @Sendable (Int?, Int) async throws -> [TelegramUpdate]
     let handleIncomingText: @Sendable (Int64, String) async throws -> Void
+    let isChatAllowed: @Sendable (Int64) -> Bool
     let loadLastProcessedUpdateID: @Sendable () async throws -> Int?
     let saveLastProcessedUpdateID: @Sendable (Int) async throws -> Void
     let flushSessions: @Sendable () async throws -> Void
@@ -15,6 +16,7 @@ public final class AppLifecycleHandler: @unchecked Sendable {
     public init(
         getUpdates: @escaping @Sendable (Int?, Int) async throws -> [TelegramUpdate],
         handleIncomingText: @escaping @Sendable (Int64, String) async throws -> Void,
+        rawAllowedTelegramChatIDs: String,
         loadLastProcessedUpdateID: @escaping @Sendable () async throws -> Int? = { nil },
         saveLastProcessedUpdateID: @escaping @Sendable (Int) async throws -> Void = { _ in },
         flushSessions: @escaping @Sendable () async throws -> Void = {},
@@ -22,8 +24,12 @@ public final class AppLifecycleHandler: @unchecked Sendable {
         pollTimeoutSeconds: Int = 30,
         retryDelayNanoseconds: UInt64 = 2_000_000_000
     ) {
+        let allowedChatIDs = allowedTelegramChatIDs(from: rawAllowedTelegramChatIDs)
         self.getUpdates = getUpdates
         self.handleIncomingText = handleIncomingText
+        self.isChatAllowed = { chatID in
+            allowedChatIDs.contains(chatID)
+        }
         self.loadLastProcessedUpdateID = loadLastProcessedUpdateID
         self.saveLastProcessedUpdateID = saveLastProcessedUpdateID
         self.flushSessions = flushSessions
@@ -38,6 +44,7 @@ extension AppLifecycleHandler: LifecycleHandler {
     public func didBootAsync(_ application: Application) async throws {
         let getUpdates = self.getUpdates
         let handleIncomingText = self.handleIncomingText
+        let isChatAllowed = self.isChatAllowed
         let loadLastProcessedUpdateID = self.loadLastProcessedUpdateID
         let saveLastProcessedUpdateID = self.saveLastProcessedUpdateID
         let logger = self.logger
@@ -70,6 +77,8 @@ extension AppLifecycleHandler: LifecycleHandler {
                             try await handleUpdate(
                                 update,
                                 handleIncomingText,
+                                isChatAllowed,
+                                logger
                             )
                         } catch let error as CancellationError {
                             throw error
@@ -157,11 +166,23 @@ extension AppLifecycleHandler: LifecycleHandler {
 private func handleUpdate(
     _ update: TelegramUpdate,
     _ handleIncomingText: @Sendable (Int64, String) async throws -> Void,
+    _ isChatAllowed: @Sendable (Int64) -> Bool,
+    _ logger: Logger
 ) async throws {
     guard let message = update.message else { return }
     if message.from?.isBot == true { return }
 
     guard let text = message.text, !text.isEmpty else { return }
+    guard isChatAllowed(message.chat.id) else {
+        logger.warning(
+            "Ignoring message from unauthorized Telegram chat",
+            metadata: [
+                "chat_id": .stringConvertible(message.chat.id),
+                "update_id": .stringConvertible(update.updateID),
+            ]
+        )
+        return
+    }
 
     try await handleIncomingText(message.chat.id, text)
 }

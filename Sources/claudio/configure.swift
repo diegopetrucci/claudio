@@ -1,4 +1,5 @@
 import Vapor
+import Foundation
 import AnthropicClient
 import SessionStore
 import TelegramClient
@@ -11,7 +12,7 @@ public func configure(_ app: Application) async throws {
     // app.middleware.use(FileMiddleware(publicDirectory: app.directory.publicDirectory))
     
     await DotEnvFile.load(for: app.environment, fileio: app.fileio, logger: app.logger)
-
+    
     app.sessionStore = try sessionStore(app)
     app.telegramClient = telegramClient(app)
     app.anthropicClient = try anthropicClient(app)
@@ -71,18 +72,19 @@ private func anthropicClient(
         fatalError("ANTHROPIC_MAX_TOKENS must be greater than zero.")
     }
 
-    try AnthropicClient.ensureSystemPromptFileExists()
-    return .live(
+    let anthropicClient = AnthropicClient.live(
         apiKey: anthropicAPIKey,
         model: anthropicModel,
         maxTokens: anthropicMaxTokens
     )
+    try anthropicClient.ensureSystemPromptFileExists("SOUL.md")
+    return anthropicClient
 }
 
 private func telegramBotService(
-    _ app: Application,
+    _ app: Application
 ) -> TelegramBotService {
-    .live(
+    return .live(
         anthropicClient: app.anthropicClient,
         telegramClient: app.telegramClient,
         sessionStore: app.sessionStore
@@ -92,9 +94,23 @@ private func telegramBotService(
 private func appLifecycleHandler(
     _ app: Application,
 ) -> AppLifecycleHandler {
-    AppLifecycleHandler(
+    guard let rawAllowedTelegramChatIDs = Environment.get("ALLOWED_TELEGRAM_CHAT_IDS")
+    else {
+        fatalError(
+            """
+            Missing ALLOWED_TELEGRAM_CHAT_IDS.
+            Set it to a comma-separated list of Telegram chat IDs, for example:
+            ALLOWED_TELEGRAM_CHAT_IDS=123456789,-100987654321
+            You can retrieve IDs by messaging your bot and running:
+            curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getUpdates?limit=20"
+            """
+        )
+    }
+    
+    return AppLifecycleHandler(
         getUpdates: app.telegramClient.getUpdates,
         handleIncomingText: app.telegramBotService.handleIncomingText,
+        rawAllowedTelegramChatIDs: rawAllowedTelegramChatIDs,
         loadLastProcessedUpdateID: app.sessionStore.loadLastProcessedUpdateID,
         saveLastProcessedUpdateID: app.sessionStore.saveLastProcessedUpdateID,
         flushSessions: app.sessionStore.flush,

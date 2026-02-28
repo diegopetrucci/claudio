@@ -1,4 +1,4 @@
-[1] New service boundaries in this repo should use protocol-witness style structs (closure-based APIs, like TelegramClient/TelegramBotService) instead of exposing concrete actor types directly.
+[2] New service boundaries in this repo should use protocol-witness style structs (closure-based APIs, like TelegramClient/TelegramBotService) instead of exposing concrete actor types directly.
 [2] Keep one top-level model/object per source file (for example: SessionMessageRole.swift, SessionMessage.swift, SessionStore.swift).
 [0] For witness-style services, avoid a second "live implementation" type; keep the live implementation directly in the witness file/extension (like TelegramClient.live).
 [0] Session persistence models/store types belong in their own package rather than under TelegramBotService.
@@ -25,7 +25,7 @@
 [0] In this workspace, `swift test` at repo root runs only root target tests; run `swift test --package-path <LocalPackage>` for changed local packages (e.g. SessionStore, TelegramBotService, AppLifecycleHandler).
 [0] Anthropic system behavior is sourced from `SOUL.md` via file I/O in `AnthropicClient`; do not expose runtime/env/user overrides for this system prompt.
 [0] For AnthropicClient-style APIs, prefer a single `.live(...)` entrypoint with injectable closures (system prompt loader and message sender) for tests instead of multiple `.live` overloads.
-[0] Ensure `SOUL.md` exists at startup (create with canonical content if missing) before constructing `AnthropicClient.live`, so Docker/runtime launches are not blocked by missing prompt files.
+[1] Ensure `SOUL.md` exists at startup (create with canonical content if missing) before constructing `AnthropicClient.live`, so Docker/runtime launches are not blocked by missing prompt files.
 [0] Keep `AnthropicClient.defaultSystemPrompt` as the canonical in-code SOUL content and reuse it in file-writing/tests to avoid symbol drift and package-test compile breaks.
 [0] For tool catalogs, model tool identity as an enum and each concrete tool as its own struct, instead of a single undifferentiated list model.
 [0] In this repo, tool metadata is now centralized in a single enum (`AvailableTools`) with computed name/description/schema and a generated `tools` catalog, instead of per-tool structs.
@@ -38,4 +38,14 @@
 [0] In ToolExecutor `runCommand`, return stdout only; treat any stderr output (and non-zero exit) as `runCommandExecutionFailed`.
 [0] With per-tool witness closures in ToolExecutor, nested per-tool `Input` DTO structs are redundant and can be removed; keep only tool definition metadata.
 [0] In ToolExecutor, `writeFile` should return `Void` (success via no throw, failure via throw) instead of returning a status string.
+[0] `SwiftAnthropic.MessageResponse` is not `Sendable`; in tests avoid returning it directly from actors, and pass/send JSON strings (or other Sendable payloads) across actor boundaries instead.
+[1] `TelegramBotService` should stay transport/orchestration-focused; inject tool definitions and tool-call handlers from app wiring instead of coupling the service package directly to `ToolExecutor`.
 [0] Dependency docs should reflect actual manifests: root external packages include Vapor and swift-nio, while SwiftAnthropic is consumed via the local AnthropicClient package.
+[0] When tool definitions are compile-time known (`ToolExecutor.tools`), keep catalog + execution loop inside `AnthropicClient.respond`; callers should pass only the prompt.
+[1] After adding new source files to a local path dependency, other package builds in this workspace can keep stale SwiftPM source lists; run `swift package clean` (or clean the dependent package) to refresh included sources.
+[0] In AnthropicClient tool execution flow, prefer native throwing tool handlers that return output text; map success/error to `.toolResult(..., isError: ...)` at the call site instead of using a result wrapper struct.
+[0] For Telegram polling in this repo, enforce `chat.id` allowlisting before dispatching to `handleIncomingText` when model tool execution is enabled, so unauthorized chats are dropped early.
+[2] Keep Telegram chat-ID allowlist parsing in the `AppLifecycleHandler` package, and pass only the raw env value from app config (which owns missing-env fatal messaging); avoid adding extra convenience initializers for this wiring.
+[0] Keep `allowedTelegramChatIDs(from:)` internal to the `AppLifecycleHandler` module; app wiring should pass raw env values but not expose parser utilities as public API.
+[0] In witness-style `.live(...)` factories, capture expensive setup (file reads, service creation) once outside request closures; per-request closures should only perform request-scoped work.
+[0] Telegram `getUpdates` calls in docs/examples must use `bot<token>` (BotFather token), not a bot numeric ID (for example `bot12345`), otherwise Telegram API auth fails.

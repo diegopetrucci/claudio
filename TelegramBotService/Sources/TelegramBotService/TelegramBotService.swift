@@ -37,12 +37,14 @@ extension TelegramBotService {
                     }
                 }
                 let prompt = (promptLines + ["Assistant:"]).joined(separator: "\n")
-                let generatedReply = try await anthropicClient.generateText(prompt)
-                _ = try await telegramClient.sendMessage(chatID, generatedReply)
+                let generatedReply = try await anthropicClient.respond(
+                    .init(text: prompt)
+                )
+                _ = try await telegramClient.sendMessage(chatID, generatedReply.text)
                 try await sessionStore.appendMessage(
                     chatID,
                     .assistant,
-                    generatedReply,
+                    generatedReply.text,
                     Date()
                 )
             }

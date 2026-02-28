@@ -5,6 +5,13 @@ import Vapor
 
 @Suite("AppLifecycleHandler Tests")
 struct AppLifecycleHandlerTests {
+    @Test("allowedTelegramChatIDs parses valid comma-separated IDs")
+    func allowedTelegramChatIDsParsesValidIDs() {
+        let parsed = allowedTelegramChatIDs(from: "123456789, -100987654321, 123456789")
+
+        #expect(parsed == Set([123456789, -100987654321]))
+    }
+
     @Test("didBootAsync starts polling from persisted cursor")
     func didBootAsyncStartsPollingFromPersistedCursor() async throws {
         let offsetRecorder = OffsetRecorder()
@@ -15,6 +22,7 @@ struct AppLifecycleHandlerTests {
                 return []
             },
             handleIncomingText: { _, _ in },
+            rawAllowedTelegramChatIDs: "101",
             loadLastProcessedUpdateID: { 41 },
             saveLastProcessedUpdateID: { _ in },
             logger: Logger(label: "tests.polling.resume"),
@@ -58,6 +66,7 @@ struct AppLifecycleHandlerTests {
                 ]
             },
             handleIncomingText: { _, _ in },
+            rawAllowedTelegramChatIDs: "101",
             loadLastProcessedUpdateID: { nil },
             saveLastProcessedUpdateID: { updateID in
                 await savedUpdateIDRecorder.record(updateID)
@@ -90,6 +99,7 @@ struct AppLifecycleHandlerTests {
         let handler = AppLifecycleHandler(
             getUpdates: { _, _ in [] },
             handleIncomingText: { _, _ in },
+            rawAllowedTelegramChatIDs: "101",
             flushSessions: {
                 await flushRecorder.markCalled()
             },
@@ -124,6 +134,7 @@ struct AppLifecycleHandlerTests {
                 }
                 await handledTextRecorder.record(text)
             },
+            rawAllowedTelegramChatIDs: "101",
             loadLastProcessedUpdateID: { nil },
             saveLastProcessedUpdateID: { updateID in
                 await savedUpdateIDRecorder.record(updateID)
@@ -142,6 +153,69 @@ struct AppLifecycleHandlerTests {
             #expect(await savedUpdateIDRecorder.contains(7))
             #expect(await savedUpdateIDRecorder.contains(8))
             #expect(await handledTextRecorder.contains("ok"))
+
+            await handler.shutdownAsync(app)
+            try await app.asyncShutdown()
+        } catch {
+            try? await app.asyncShutdown()
+            throw error
+        }
+    }
+
+    @Test("didBootAsync ignores unauthorized chats")
+    func didBootAsyncIgnoresUnauthorizedChats() async throws {
+        let updatesProvider = BatchUpdatesProvider(
+            batches: [
+                [
+                    TelegramUpdate(
+                        updateID: 7,
+                        message: TelegramMessage(
+                            messageID: 1,
+                            from: TelegramUser(id: 2, isBot: false),
+                            chat: TelegramChat(id: 999),
+                            text: "run dangerous command"
+                        )
+                    ),
+                    TelegramUpdate(
+                        updateID: 8,
+                        message: TelegramMessage(
+                            messageID: 2,
+                            from: TelegramUser(id: 2, isBot: false),
+                            chat: TelegramChat(id: 101),
+                            text: "hello"
+                        )
+                    ),
+                ],
+            ]
+        )
+        let savedUpdateIDRecorder = SavedUpdateIDRecorder()
+        let handledMessageRecorder = HandledMessageRecorder()
+        let handler = AppLifecycleHandler(
+            getUpdates: { _, _ in
+                await updatesProvider.next()
+            },
+            handleIncomingText: { chatID, text in
+                await handledMessageRecorder.record(chatID: chatID, text: text)
+            },
+            rawAllowedTelegramChatIDs: "101",
+            loadLastProcessedUpdateID: { nil },
+            saveLastProcessedUpdateID: { updateID in
+                await savedUpdateIDRecorder.record(updateID)
+            },
+            logger: Logger(label: "tests.polling.allowlist"),
+            pollTimeoutSeconds: 1,
+            retryDelayNanoseconds: 200_000_000
+        )
+
+        let app = try await Application.make(.testing)
+        do {
+            try await handler.didBootAsync(app)
+            try await waitUntil {
+                await savedUpdateIDRecorder.contains(8)
+            }
+            #expect(await savedUpdateIDRecorder.contains(7))
+            #expect(await savedUpdateIDRecorder.contains(8))
+            #expect(await handledMessageRecorder.all() == [HandledMessage(chatID: 101, text: "hello")])
 
             await handler.shutdownAsync(app)
             try await app.asyncShutdown()
@@ -200,6 +274,18 @@ private actor HandledTextRecorder {
     }
 }
 
+private actor HandledMessageRecorder {
+    private var handled: [HandledMessage] = []
+
+    func record(chatID: Int64, text: String) {
+        self.handled.append(.init(chatID: chatID, text: text))
+    }
+
+    func all() -> [HandledMessage] {
+        self.handled
+    }
+}
+
 private actor UpdatesProvider {
     private var didReturnInitialBatch = false
 
@@ -229,6 +315,24 @@ private actor UpdatesProvider {
             ),
         ]
     }
+}
+
+private actor BatchUpdatesProvider {
+    private var batches: [[TelegramUpdate]]
+
+    init(batches: [[TelegramUpdate]]) {
+        self.batches = batches
+    }
+
+    func next() -> [TelegramUpdate] {
+        guard !self.batches.isEmpty else { return [] }
+        return self.batches.removeFirst()
+    }
+}
+
+private struct HandledMessage: Equatable, Sendable {
+    let chatID: Int64
+    let text: String
 }
 
 private func waitUntil(

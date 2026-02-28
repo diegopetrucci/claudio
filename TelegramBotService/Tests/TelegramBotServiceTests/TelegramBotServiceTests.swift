@@ -14,9 +14,9 @@ struct TelegramBotServiceTests {
         let sessionRecorder = SessionStoreRecorder()
 
         let anthropicClient = AnthropicClient(
-            generateText: { prompt in
-                await promptRecorder.record(prompt)
-                return "AI reply"
+            respond: { prompt in
+                await promptRecorder.record(prompt.text)
+                return .init(text: "AI reply")
             }
         )
         let telegramClient = TelegramClient(
@@ -57,8 +57,8 @@ struct TelegramBotServiceTests {
         let sessionRecorder = SessionStoreRecorder()
 
         let anthropicClient = AnthropicClient(
-            generateText: { prompt in
-                await promptRecorder.record(prompt)
+            respond: { prompt in
+                await promptRecorder.record(prompt.text)
                 throw StubError.failed
             }
         )
@@ -115,9 +115,9 @@ struct TelegramBotServiceTests {
         )
 
         let anthropicClient = AnthropicClient(
-            generateText: { prompt in
-                await promptRecorder.record(prompt)
-                return "AI reply"
+            respond: { prompt in
+                await promptRecorder.record(prompt.text)
+                return .init(text: "AI reply")
             }
         )
         let telegramClient = TelegramClient(
@@ -158,9 +158,9 @@ struct TelegramBotServiceTests {
         let sessionRecorder = SessionStoreRecorder()
 
         let anthropicClient = AnthropicClient(
-            generateText: { prompt in
-                await promptRecorder.record(prompt)
-                return "AI reply"
+            respond: { prompt in
+                await promptRecorder.record(prompt.text)
+                return .init(text: "AI reply")
             }
         )
         let telegramClient = TelegramClient(

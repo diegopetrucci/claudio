@@ -14,6 +14,7 @@ let package = Package(
         .package(path: "TelegramClient"),
         .package(path: "TelegramBotService"),
         .package(path: "AppLifecycleHandler"),
+        .package(path: "ToolExecutor"),
     ],
     targets: [
         .executableTarget(
@@ -27,6 +28,7 @@ let package = Package(
                 "TelegramClient",
                 "TelegramBotService",
                 "AppLifecycleHandler",
+                "ToolExecutor",
             ],
             swiftSettings: swiftSettings
         ),
@@ -40,6 +42,7 @@ let package = Package(
                 "TelegramClient",
                 "TelegramBotService",
                 "AppLifecycleHandler",
+                "ToolExecutor",
             ],
             swiftSettings: swiftSettings
         )

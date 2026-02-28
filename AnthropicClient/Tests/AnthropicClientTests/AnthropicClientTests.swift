@@ -5,10 +5,10 @@ import Testing
 
 @Suite("AnthropicClient Tests")
 struct AnthropicClientTests {
-    @Test("generateText builds message request and returns text response")
-    func generateTextBuildsRequest() async throws {
+    @Test("respond builds message request and returns text response")
+    func respondBuildsRequest() async throws {
         let recorder = AnthropicRequestRecorder()
-        let client = try AnthropicClient.live(
+        let client = AnthropicClient.live(
             apiKey: "test-key",
             model: .sonnet,
             maxTokens: 256,
@@ -34,8 +34,8 @@ struct AnthropicClientTests {
             }
         )
 
-        let text = try await client.generateText("hello")
-        #expect(text == "Hello from Claude")
+        let incomingMessage = try await client.respond(.init(text: "hello"))
+        #expect(incomingMessage.text == "Hello from Claude")
 
         let request = await recorder.request
         #expect(request?.model == AnthropicModel.sonnet.apiValue)
@@ -46,9 +46,9 @@ struct AnthropicClientTests {
         #expect(request?.messages.first?.text == "hello")
     }
 
-    @Test("generateText concatenates all text blocks")
-    func generateTextConcatsTextBlocks() async throws {
-        let client = try AnthropicClient.live(
+    @Test("respond concatenates all text blocks")
+    func respondConcatsTextBlocks() async throws {
+        let client = AnthropicClient.live(
             apiKey: "test-key",
             model: .sonnet,
             maxTokens: 256,
@@ -76,13 +76,13 @@ struct AnthropicClientTests {
             }
         )
 
-        let text = try await client.generateText("hello")
-        #expect(text == "Hello world")
+        let incomingMessage = try await client.respond(.init(text: "hello"))
+        #expect(incomingMessage.text == "Hello world")
     }
 
-    @Test("generateText throws when response contains no text blocks")
-    func generateTextThrowsWhenNoText() async throws {
-        let client = try AnthropicClient.live(
+    @Test("respond throws when response contains no text blocks")
+    func respondThrowsWhenNoText() async throws {
+        let client = AnthropicClient.live(
             apiKey: "test-key",
             model: .sonnet,
             maxTokens: 256,
@@ -108,7 +108,7 @@ struct AnthropicClientTests {
         )
 
         do {
-            _ = try await client.generateText("hello")
+            _ = try await client.respond(.init(text: "hello"))
             Issue.record("Expected AnthropicClientError.missingTextContent, but call succeeded.")
         } catch let error as AnthropicClientError {
             switch error {
@@ -120,41 +120,80 @@ struct AnthropicClientTests {
         }
     }
 
-    @Test("loadSystemPrompt reads file content")
-    func loadSystemPromptReadsFileContent() throws {
-        let tempDirectoryURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDirectoryURL, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDirectoryURL) }
+    @Test("respond executes tool call and sends tool_result message")
+    func respondWithToolsRoundTrip() async throws {
+        let payloadRecorder = AnthropicPayloadRecorder()
+        let responses = MessageResponseSequence(
+            responses: [
+                #"""
+                    {
+                      "id":"msg_1",
+                      "type":"message",
+                      "model":"claude-3-7-sonnet-latest",
+                      "role":"assistant",
+                      "content":[
+                        {
+                          "type":"tool_use",
+                          "id":"toolu_1",
+                          "name":"run_command",
+                          "input":{"command":"printf 'hello'"}
+                        }
+                      ],
+                      "stop_reason":"tool_use",
+                      "stop_sequence":null,
+                      "usage":{"input_tokens":10,"output_tokens":4}
+                    }
+                    """#,
+                #"""
+                    {
+                      "id":"msg_2",
+                      "type":"message",
+                      "model":"claude-3-7-sonnet-latest",
+                      "role":"assistant",
+                      "content":[{"type":"text","text":"Tool says hello"}],
+                      "stop_reason":"end_turn",
+                      "stop_sequence":null,
+                      "usage":{"input_tokens":20,"output_tokens":6}
+                    }
+                    """#,
+            ]
+        )
 
-        let promptFileURL = tempDirectoryURL.appendingPathComponent("SOUL.md")
-        try "You are Claudius.".write(to: promptFileURL, atomically: true, encoding: .utf8)
+        let client = AnthropicClient.live(
+            apiKey: "test-key",
+            model: .sonnet,
+            maxTokens: 256,
+            loadSystemPrompt: {
+                "You are concise."
+            },
+            createMessageOverride: { parameter in
+                await payloadRecorder.record(Self.encodeMessageParameter(parameter))
+                return try Self.decodeMessageResponse(try await responses.next())
+            }
+        )
 
-        let prompt = try AnthropicClient.loadSystemPrompt(filePath: promptFileURL.path)
-        #expect(prompt == "You are Claudius.")
+        let incomingMessage = try await client.respond(.init(text: "hello"))
+
+        #expect(incomingMessage.text == "Tool says hello")
+        let payloads = await payloadRecorder.all()
+        #expect(payloads.count == 2)
+        #expect(payloads[0].contains("\"tools\""))
+        #expect(payloads[1].contains("\"tool_result\""))
+        #expect(payloads[1].contains("\"tool_use_id\":\"toolu_1\""))
+        #expect(payloads[1].contains("\"content\":\"hello\""))
     }
 
-    @Test("loadSystemPrompt throws for empty file")
-    func loadSystemPromptThrowsForEmptyFile() throws {
-        let tempDirectoryURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDirectoryURL, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDirectoryURL) }
-
-        let promptFileURL = tempDirectoryURL.appendingPathComponent("SOUL.md")
-        try "\n\n".write(to: promptFileURL, atomically: true, encoding: .utf8)
-
-        do {
-            _ = try AnthropicClient.loadSystemPrompt(filePath: promptFileURL.path)
-            Issue.record("Expected AnthropicClientError.emptySystemPromptFile, but call succeeded.")
-        } catch let error as AnthropicClientError {
-            switch error {
-            case let .emptySystemPromptFile(path):
-                #expect(path == promptFileURL.path)
-            default:
-                Issue.record("Expected AnthropicClientError.emptySystemPromptFile, but got \(error).")
+    @Test("respond uses injected witness implementation")
+    func respondUsesInjectedWitnessImplementation() async throws {
+        let client = AnthropicClient(
+            respond: { outgoingMessage in
+                .init(text: "reply for \(outgoingMessage.text)")
             }
-        }
+        )
+
+        let incomingMessage = try await client.respond(.init(text: "hello"))
+
+        #expect(incomingMessage.text == "reply for hello")
     }
 
     @Test("ensureSystemPromptFileExists writes default content when missing")
@@ -165,7 +204,15 @@ struct AnthropicClientTests {
         defer { try? FileManager.default.removeItem(at: tempDirectoryURL) }
 
         let promptFileURL = tempDirectoryURL.appendingPathComponent("SOUL.md")
-        try AnthropicClient.ensureSystemPromptFileExists(filePath: promptFileURL.path)
+        let client = AnthropicClient.live(
+            apiKey: "test-key",
+            model: .sonnet,
+            maxTokens: 256,
+            loadSystemPrompt: {
+                "You are concise."
+            }
+        )
+        try client.ensureSystemPromptFileExists(promptFileURL.path)
 
         let prompt = try String(contentsOf: promptFileURL, encoding: .utf8)
         #expect(prompt == AnthropicClient.defaultSystemPrompt)
@@ -180,8 +227,15 @@ struct AnthropicClientTests {
 
         let promptFileURL = tempDirectoryURL.appendingPathComponent("SOUL.md")
         try "Custom prompt".write(to: promptFileURL, atomically: true, encoding: .utf8)
-
-        try AnthropicClient.ensureSystemPromptFileExists(filePath: promptFileURL.path)
+        let client = AnthropicClient.live(
+            apiKey: "test-key",
+            model: .sonnet,
+            maxTokens: 256,
+            loadSystemPrompt: {
+                "You are concise."
+            }
+        )
+        try client.ensureSystemPromptFileExists(promptFileURL.path)
 
         let prompt = try String(contentsOf: promptFileURL, encoding: .utf8)
         #expect(prompt == "Custom prompt")
@@ -192,6 +246,14 @@ struct AnthropicClientTests {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return try decoder.decode(MessageResponse.self, from: data)
+    }
+
+    private static func encodeMessageParameter(_ parameter: MessageParameter) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(parameter)
+        else { return "" }
+        return String(decoding: data, as: UTF8.self)
     }
 
     private static func captureRequest(from parameter: MessageParameter) -> CapturedAnthropicRequest {
@@ -227,6 +289,36 @@ private actor AnthropicRequestRecorder {
     func record(_ request: CapturedAnthropicRequest) {
         self.request = request
     }
+}
+
+private actor AnthropicPayloadRecorder {
+    private var payloads: [String] = []
+
+    func record(_ payload: String) {
+        self.payloads.append(payload)
+    }
+
+    func all() -> [String] {
+        self.payloads
+    }
+}
+
+private actor MessageResponseSequence {
+    private var responses: [String]
+
+    init(responses: [String]) {
+        self.responses = responses
+    }
+
+    func next() throws -> String {
+        guard !self.responses.isEmpty
+        else { throw MessageResponseSequenceError.outOfResponses }
+        return self.responses.removeFirst()
+    }
+}
+
+private enum MessageResponseSequenceError: Error {
+    case outOfResponses
 }
 
 private struct CapturedAnthropicRequest: Sendable {

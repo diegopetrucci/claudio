@@ -10,6 +10,25 @@ Loosely based on the brilliant [You could've invented OpenClaw](https://gist.git
 2. Run the project `swift run`
 3. Stop the execution via `control + c`
 
+### Telegram chat ID allowlist
+
+You must set `ALLOWED_TELEGRAM_CHAT_IDS` in `.env` with the Telegram chat IDs that are allowed to talk to the bot.
+
+To get your chat ID:
+
+1. Start the bot and send it a message
+2. Run:
+
+```bash
+curl -s "https://api.telegram.org/bot<token>/getUpdates"
+```
+
+Where `<token>` is your bot token from BotFather. Then copy `message.chat.id` from the response and add it to:
+
+```bash
+ALLOWED_TELEGRAM_CHAT_IDS=<chat_id>
+```
+
 ## Development
 
 1. Build with `swift build`, or using Xcode

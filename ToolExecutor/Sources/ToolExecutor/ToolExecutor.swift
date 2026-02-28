@@ -19,6 +19,8 @@ public struct ToolExecutor: Sendable {
     }
 }
 
+// TODO: add mocks and remove init
+
 extension ToolExecutor {
     public static func live() -> Self {
         .init(
@@ -116,6 +118,7 @@ extension ToolExecutor {
                 }
             },
             webSearch: { query in
+                // TODO: implement web search tool
                 throw ToolExecutorError.webSearchNotImplemented(query: query)
             }
         )
